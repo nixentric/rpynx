@@ -82,4 +82,16 @@ SDKCOMMON=$B/sdk/renpy-$RENPY_VER-sdkarm/renpy/common
 "$HOSTPY" "$HERE/stage_engine.py" "$B/renpy" "$SDKCOMMON" "$D/renpy-base" \
     "$TOP/runtime/compatibility" "$HERE/boot"
 "$HOSTPY" "$HERE/make_cursor.py" "$D/renpy-base/renpy/common/_rsl_cursor.png"
+
+# Third-party pure-Python packages Ren'Py imports (ecdsa and six at start-up;
+# rsa, requests and its dependencies for updates/downloads). Taken as
+# compiled .pyc from the verified official SDK, the set Ren'Py 8.5.3 is
+# tested with (CPython 3.12 bytecode). Licences: see runtime/renpy/README.md.
+SDKLIB="renpy-$RENPY_VER-sdkarm/lib/python3.12"
+EXTRA="ecdsa six.pyc rsa pyasn1 requests urllib3 idna chardet certifi socks.pyc"
+rm -rf "$B/sdklib" && mkdir -p "$B/sdklib"
+tar -xjf "$SDKTB" -C "$B/sdklib" $(for m in $EXTRA; do echo "$SDKLIB/$m"; done)
+for m in $EXTRA; do cp -R "$B/sdklib/$SDKLIB/$m" "$D/renpy-base/"; done
+find "$D/renpy-base" -name "test_*.pyc" -path "*/ecdsa/*" -delete
+echo "added SDK packages: $EXTRA"
 ls -l "$D/lib"

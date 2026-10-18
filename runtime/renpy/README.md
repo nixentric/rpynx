@@ -55,6 +55,23 @@ runtime also links FFmpeg statically. A distributed `.nro` must therefore meet t
 
 None of Ren'Py's own `.py` files are modified.
 
+## Bundled third-party Python packages
+
+Ren'Py imports `ecdsa` (save tokens) and `six` at start-up, and `rsa`, `requests` and
+`requests`' dependencies for updates and downloads. `build.sh` copies the compiled `.pyc`
+files the official SDK ships (CPython 3.12 bytecode, magic 3531) into `renpy-base`.
+
+| Package | Licence (as published upstream; re-check before distributing) |
+|---|---|
+| ecdsa, six, urllib3 | MIT |
+| rsa, requests | Apache-2.0 |
+| pyasn1 | BSD-2-Clause |
+| idna, PySocks | BSD-3-Clause |
+| chardet | LGPL-2.1-or-later |
+| certifi | MPL-2.0 |
+
+`ssl` is not available, so `requests` cannot make HTTPS calls on the Switch.
+
 ## Boot and controller bridge (`boot/`)
 
 - **`switch_main.py`** is run instead of `renpy.py`. It loads `renpy.py` unchanged, points
