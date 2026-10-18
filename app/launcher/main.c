@@ -82,6 +82,8 @@ static struct {
     uint32_t back_since;
     bool back_held;
     bool dirty;                    /* redraw on the next frame */
+    int applet_confirm;            /* game index confirmed for applet-mode launch, -1 none */
+    uint32_t applet_confirm_until;
     uint32_t last_draw;
 } g;
 
@@ -134,6 +136,12 @@ static const char *applet_type_str(void)
     default:
         return "Other applet";
     }
+}
+
+static bool full_memory(void)
+{
+    AppletType t = appletGetAppletType();
+    return t == AppletType_Application || t == AppletType_SystemApplication;
 }
 
 static const char *mode_str(void)
@@ -515,7 +523,19 @@ static void on_action(rsl_action a)
                 status(C_BAD "%s has no game/ folder; copy the whole game folder." C_RESET, g.games[g.sel]);
             else if (strchr(g.games[g.sel], '"'))
                 status(C_BAD "Rename %s: folder names cannot contain quotes." C_RESET, g.games[g.sel]);
-            else {
+            else if (!full_memory() && (g.applet_confirm != g.sel || g.now > g.applet_confirm_until)) {
+                /* Applet mode: a Ren'Py game ran out of memory in Mesa and took
+                 * the whole console down (hardware run 8). Explain; launch only
+                 * on a second press. */
+                u64 total = 0;
+                svcGetInfo(&total, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
+                g.applet_confirm = g.sel;
+                g.applet_confirm_until = g.now + 5000;
+                status(C_BAD "Applet mode: only %llu MiB of memory. Ren'Py games need the full memory\n"
+                       "mode: start the loader by holding R while opening a game. Games can crash\n"
+                       "the whole console here. Press %s again within 5 s to launch anyway." C_RESET,
+                       (unsigned long long)(total >> 20), key(RSL_ACT_CONFIRM));
+            } else {
                 snprintf(args, sizeof args, "--game \"" GAMES_DIR "/%s\"", g.games[g.sel]);
                 chain_load(RUNTIME_NRO, args);
             }
@@ -649,6 +669,7 @@ int main(int argc, char **argv)
     rsl_input_init(&g.in, &cfg);
     rsl_switch_input_init(&g.pad);
     g.capture = -1;
+    g.applet_confirm = -1;
 
     AppletHookCookie hook;
     appletHook(&hook, on_applet, NULL);

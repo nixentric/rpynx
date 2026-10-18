@@ -91,6 +91,16 @@ def _setup_display():
     underlay.append(keymap)
     config.underlay[:] = underlay
 
+    # Applet mode (album) has a small fraction of the console's memory; Mesa
+    # crashed copying a texture there (hardware run 8). Keep Ren'Py's image
+    # cache (400 MB by default) small. ponytail: fixed 64 MB; scale with the
+    # real budget if applet mode turns out to be worth supporting.
+    if _rslnx.applet_type() not in (0, 4):
+        config.image_cache_size = None
+        config.image_cache_size_mb = min(config.image_cache_size_mb, 64)
+        cache = renpy.display.im.cache
+        cache.cache_limit = min(cache.cache_limit or 1 << 62, 64 * 1024 * 1024 // 4)
+
     if _rslnx.cursor_visible() and config.mouse_displayable is None:
         image = "_rsl_cursor.png"
         if config.mouse and config.mouse.get("default"):

@@ -516,7 +516,10 @@ static int run_game(struct job *job, const char *game, const char *savedir_arg, 
     tsInitialize();
     psmInitialize();
     load_controls(id);
-    rsl_log("runtime start: game %s, saves %s, applet type %d", basedir, savedir, (int)appletGetAppletType());
+    u64 total_mem = 0;
+    svcGetInfo(&total_mem, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
+    rsl_log("runtime start: game %s, saves %s, applet type %d, memory %llu MiB", basedir, savedir,
+            (int)appletGetAppletType(), (unsigned long long)(total_mem >> 20));
 
     job->script = RENPY_BASE "/switch_main.py";
     job->renpy = true;
