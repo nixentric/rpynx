@@ -1,0 +1,30 @@
+{
+	"format":	"renpy-switch-loader/controller",
+	"version":	1,
+	"bindings":	{
+		"confirm":	["A"],
+		"back":	["B"],
+		"hide_ui":	["X"],
+		"history":	["Y"],
+		"rollback":	["R"],
+		"rollforward":	[],
+		"auto":	[],
+		"skip":	["ZR"],
+		"game_menu":	["Plus"],
+		"quick_menu":	[],
+		"up":	["NavUp"],
+		"down":	["NavDown"],
+		"left":	["NavLeft"],
+		"right":	["NavRight"],
+		"click":	[],
+		"overlay":	["RStick"]
+	},
+	"deadzone":	0.15,
+	"cursor_speed":	0.6,
+	"cursor_accel":	1.5,
+	"repeat_delay_ms":	400,
+	"repeat_interval_ms":	90,
+	"nav_stick":	"right",
+	"cursor_stick":	"left",
+	"cursor_visible":	false
+}

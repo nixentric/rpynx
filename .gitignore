@@ -1,0 +1,6 @@
+build-switch/
+build-host/
+dist/
+__pycache__/
+*.pyc
+.DS_Store
