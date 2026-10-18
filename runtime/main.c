@@ -31,6 +31,7 @@
 #include "input_config.h"
 #include "input_switch.h"
 #include "log.h"
+#include "procinfo.h"
 
 #define ROOT        "sdmc:/switch/renpy-loader"
 #define STDLIB_ZIP  L"romfs:/lib/python312.zip"
@@ -526,14 +527,16 @@ static int run_game(struct job *job, const char *game, const char *savedir_arg, 
     job->argv[3] = "--savedir";
     job->argv[4] = savedir;
     if (start_python(job, &th)) {
-        /* SDL services applet messages; the main thread only watches. */
-        static const int dumps[] = { 45, 180 };
-        watch_python(job, dumps, 2, NULL);
+        /* SDL services applet messages; the main thread only logs telemetry.
+         * No stack dumps here: reading a running Ren'Py's frames from another
+         * thread crashed the console (hardware run 7). */
+        watch_python(job, NULL, 0, NULL);
         pthread_join(th, NULL);
     }
     rsl_log("Ren'Py finished with status %d", job->rc);
     tsExit();
     psmExit();
+    rsl_heap_audit("runtime exit");
 
     if (job->rc != 0) {
         consoleInit(NULL);
