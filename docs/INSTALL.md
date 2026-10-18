@@ -3,16 +3,19 @@
 Requires a Switch that can run homebrew (Atmosphère + Homebrew Menu).
 
 1. Copy `dist/renpy-loader.nro` to `sdmc:/switch/renpy-loader/renpy-loader.nro`.
+   Copy `dist/renpy-runtime.nro` to `sdmc:/switch/renpy-loader/runtimes/renpy-runtime.nro`.
 2. Launch it from the Homebrew Menu. On first start it creates:
 
 ```
 sdmc:/switch/renpy-loader/
 ├── renpy-loader.nro
+├── runtimes/renpy-runtime.nro   embedded Python (Ren'Py engine from Milestone 4)
 ├── games/                 one folder per game (each must contain game/)
 ├── config/controller/
 │   ├── global.json        written when you save controller settings
 │   └── games/<name>.json  per-game controller profiles
-└── logs/loader.log
+├── cache/                 scratch space (self-test report)
+└── logs/                  loader.log, runtime.log
 ```
 
 **Memory:** started from the album, homebrew runs as a library applet with limited memory.
@@ -20,9 +23,13 @@ Ren'Py games will need the full application memory. Start the Homebrew Menu by h
 while launching an installed game (title override). The Diagnostics screen shows which mode
 you are in.
 
+**Python self-test:** Diagnostics → A starts the runtime, runs the Python self-test, and
+returns to the loader when you press +. This needs the loader to be started from the
+Homebrew Menu, because chain-loading goes through the Homebrew loader.
+
 ## Games
 
-Not runnable yet (Milestones 3–5). The library already lists folders under `games/` and flags
+Not runnable yet (Milestones 4–5). The library already lists folders under `games/` and flags
 those without a `game/` subfolder.
 
 ## Controls

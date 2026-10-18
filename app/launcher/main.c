@@ -27,6 +27,7 @@
 #define GAMES_DIR  ROOT "/games"
 #define CTRL_DIR   ROOT "/config/controller"
 #define GLOBAL_CFG CTRL_DIR "/global.json"
+#define RUNTIME_NRO ROOT "/runtimes/renpy-runtime.nro"
 #define MAX_GAMES  64
 #define CAPTURE_MS 5000
 #define SCREEN_W   1280.0f
@@ -61,6 +62,7 @@ static struct {
     uint32_t now;
     rsl_load_result global_load;
     bool sd_ok;
+    char self_path[256];           /* this .nro, to come back to after a game */
 
     char games[MAX_GAMES][64];
     bool game_ok[MAX_GAMES];
@@ -449,11 +451,36 @@ static void draw_diag(void)
     printf("Controls:     %s (%s)\n", GLOBAL_CFG,
            g.global_load == RSL_LOAD_OK ? "loaded" :
            g.global_load == RSL_LOAD_BACKUP ? "loaded from backup" : "defaults");
-    printf("Runtime:      " C_BAD "not built yet (Milestone 3-4)" C_RESET "\n");
+    struct stat st;
+    printf("Runtime:      %s %s\n", RUNTIME_NRO,
+           stat(RUNTIME_NRO, &st) == 0 ? C_GOOD "found" C_RESET : C_BAD "missing" C_RESET);
     printf("\nRecent log (%s/logs/loader.log):\n", ROOT);
     for (int i = 0; rsl_log_recent(i); i++)
         printf("  %.76s\n", rsl_log_recent(i));
-    printf("\n[%s] back\n", key(RSL_ACT_BACK));
+    printf("\n[%s] run Python self-test  [%s] back\n", key(RSL_ACT_CONFIRM), key(RSL_ACT_BACK));
+}
+
+/* Exit to `nro` (via the Homebrew loader) and have it bring us back after. */
+static void chain_load(const char *nro, const char *args)
+{
+    struct stat st;
+    char argv[1024];
+    if (!envHasNextLoad()) {
+        status(C_BAD "Cannot start other programs: launch the loader from the Homebrew Menu." C_RESET);
+        return;
+    }
+    if (stat(nro, &st) != 0) {
+        status(C_BAD "Runtime not installed: %s" C_RESET, nro);
+        return;
+    }
+    snprintf(argv, sizeof argv, "%s --return %s %s", nro, g.self_path, args);
+    Result rc = envSetNextLoad(nro, argv);
+    if (R_FAILED(rc)) {
+        status(C_BAD "envSetNextLoad failed: 0x%x" C_RESET, (unsigned)rc);
+        return;
+    }
+    rsl_log("chain-loading: %s", argv);
+    g.quit = true;
 }
 
 static void on_action(rsl_action a)
@@ -493,6 +520,7 @@ static void on_action(rsl_action a)
         break;
     case SCR_DIAG:
         if (a == RSL_ACT_BACK) go(SCR_MAIN);
+        if (a == RSL_ACT_CONFIRM) chain_load(RUNTIME_NRO, "romfs:/selftest.py");
         break;
     case SCR_TEST:
         break;
@@ -573,8 +601,9 @@ static void frame(float dt)
 
 int main(int argc, char **argv)
 {
-    (void)argc;
-    (void)argv;
+    /* argv[0] is our own path when started from the Homebrew Menu. */
+    snprintf(g.self_path, sizeof g.self_path, "%s",
+             argc > 0 && strncmp(argv[0], "sdmc:/", 6) == 0 ? argv[0] : ROOT "/renpy-loader.nro");
     consoleInit(NULL);
 
     g.sd_ok = rsl_mkdirs(ROOT "/logs") && rsl_mkdirs(CTRL_DIR "/games") && rsl_mkdirs(GAMES_DIR);

@@ -27,6 +27,7 @@ No game has been tested. Rows are added only with a test record from `docs/HARDW
 | Virtual cursor, touch readout | Implemented, host-tested (cursor math), **hardware unverified** |
 | Emergency recovery combo | Implemented, host-tested, **hardware unverified** |
 | Suspend / resume / reconnect input reset | Implemented, host-tested (engine), **hardware unverified** |
-| Ren'Py runtime, game launch, saves | Not implemented |
+| Embedded Python 3.12.8 runtime + self-test | Builds and links; packaging host-tested, **hardware unverified** |
+| Ren'Py engine, game launch, saves | Not implemented |
 | In-game overlay | Not implemented (needs the runtime) |
 | Importer | Not implemented (Milestone 5) |

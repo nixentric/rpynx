@@ -1,0 +1,25 @@
+diff --git a/configure b/configure
+index 241cf8f..a356dd5 100755
+--- a/configure
++++ b/configure
+@@ -4279,6 +4279,10 @@ then
+ 	*-*-wasi)
+ 	    ac_sys_system=WASI
+ 	    ;;
++	aarch64-*-elf)
++	    # Nintendo Switch (Horizon) via devkitA64/libnx
++	    ac_sys_system=Horizon
++	    ;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -4341,6 +4345,9 @@ if test "$cross_compiling" = yes; then
+ 	wasm32-*-* | wasm64-*-*)
+ 		_host_cpu=$host_cpu
+ 		;;
++	aarch64-*-elf)
++		_host_cpu=$host_cpu
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"

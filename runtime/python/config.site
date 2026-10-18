@@ -1,0 +1,22 @@
+# Autoconf answers for the Switch (Horizon, newlib + libnx) that configure
+# cannot work out itself when cross compiling.
+ac_cv_file__dev_ptmx=no
+ac_cv_file__dev_ptc=no
+# No dynamic loading on Horizon: every module is linked in statically.
+ac_cv_func_dlopen=no
+ac_cv_lib_dl_dlopen=no
+# newlib's getentropy() calls _getentropy_r, which the runtime implements with
+# libnx randomGet() (runtime/python/nx_shims.c). It is absent while configure
+# links its test programs, so state the answer.
+ac_cv_func_getentropy=yes
+# newlib's sys/resource.h has getrusage() but no rlimit API, which the
+# resource and faulthandler modules expect when the header exists.
+ac_cv_header_sys_resource_h=no
+# Declared by newlib but not implemented by libnx (configure only compiles
+# these probes, so it cannot tell).
+ac_cv_func_chroot=no
+ac_cv_func_fchdir=no
+ac_cv_func_fdatasync=no
+ac_cv_func_setgroups=no
+# Horizon cannot spawn processes (subprocess is patched to know this).
+py_cv_module__posixsubprocess=n/a

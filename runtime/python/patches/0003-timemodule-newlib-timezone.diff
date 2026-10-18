@@ -1,0 +1,16 @@
+diff --git a/Modules/timemodule.c b/Modules/timemodule.c
+index 5907826..6b82419 100644
+--- a/Modules/timemodule.c
++++ b/Modules/timemodule.c
+@@ -45,6 +45,11 @@
+ #  define _Py_timezone _timezone
+ #  define _Py_daylight _daylight
+ #  define _Py_tzname _tzname
++#elif defined(__SWITCH__)
++/* newlib (Nintendo Switch) only declares the underscored names. */
++#  define _Py_timezone _timezone
++#  define _Py_daylight _daylight
++#  define _Py_tzname tzname
+ #else
+ #  define _Py_timezone timezone
+ #  define _Py_daylight daylight

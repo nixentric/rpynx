@@ -41,5 +41,19 @@ matching part of `sdmc:/switch/renpy-loader/logs/loader.log`.
 | H19 | Exit | Main menu → Exit | Returns to hbmenu; log ends with "exiting normally" and "log closed" |
 | H20 | Missing SD write | Lock or remove write access (e.g. full card) | Red "not writable" warning; loader keeps running |
 
+## Milestone 3 tests (embedded Python runtime)
+
+Setup: copy `dist/renpy-runtime.nro` to `sdmc:/switch/renpy-loader/runtimes/renpy-runtime.nro`.
+
+| # | Test | Steps | Expected |
+|---|---|---|---|
+| H21 | Runtime installed | Loader → Diagnostics | "Runtime: … found" |
+| H22 | Self-test, applet mode | Start the loader from the album, Diagnostics → A | Loader exits, runtime prints PASS lines and "0 required check(s) failed". Report at `cache/python-selftest.txt`; `logs/runtime.log` shows "Python 3.12.8 … initialised" |
+| H23 | Self-test, application mode | Same, with the loader started via title override (hold R on a game) | As H22. Record the memory line (used / total MiB) from both modes |
+| H24 | Return to loader | After H22, press + | Loader starts again on its main menu |
+| H25 | HOME and sleep during the self-test | Press HOME or sleep while the PASS lines are printing, then return | Test finishes; no hang; status line printed |
+
+Record the full report text and both memory figures; they set the memory budget for Milestone 4.
+
 Milestone 4 and later add the gameplay tests from the project brief (new game, dialogue,
 choices, save/load loops, rollback, suspend during gameplay, soak tests).

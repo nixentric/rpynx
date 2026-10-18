@@ -4,3 +4,6 @@ dist/
 __pycache__/
 *.pyc
 .DS_Store
+build-python/
+build-runtime/
+build-runtime-romfs/

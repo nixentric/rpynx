@@ -32,6 +32,25 @@ the normaliser relies on is checked against libnx's own constants by `_Static_as
 | `tests/unit/` | Host unit tests |
 | `scripts/` | `build.sh` (pinned container build), `test.sh` (host tests) |
 
+| `runtime/main.c` | Runtime `.nro`: embeds CPython, runs a script (later: a Ren'Py game) |
+| `runtime/python/` | Static CPython 3.12.8 cross build: patches, `config.site`, stdlib packer, self-test ([README](../runtime/python/README.md)) |
+| `docker/Dockerfile` | Pinned devkitA64 image plus host headers needed to build the host CPython |
+
+## Process model
+
+The loader and the runtime are separate `.nro` files. To start a game, the loader calls
+libnx `envSetNextLoad(runtime, "runtime --return <loader> <args>")` and exits. The Homebrew
+loader then starts the runtime as a fresh process. On exit, the runtime calls
+`envSetNextLoad(<loader>)`, which brings the user back to the library.
+
+Reasons:
+- Every game gets a clean process and address space. SnepOMatic reports Mesa/nouveau
+  faults when initialised twice in one process.
+- A crashed game cannot take the loader's state with it.
+- Per-game runtime selection is just a different file in `runtimes/`.
+
+The cost is a few seconds of `.nro` load time per launch. Not measured yet.
+
 Directories from the target layout (`runtime/`, `importer/`, `platform/graphics`, …) are
 created when the milestone that fills them starts, not before.
 

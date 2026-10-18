@@ -1,0 +1,16 @@
+diff --git a/Lib/subprocess.py b/Lib/subprocess.py
+index 1d17ae3..d6e06cb 100644
+--- a/Lib/subprocess.py
++++ b/Lib/subprocess.py
+@@ -74,8 +74,9 @@ except ModuleNotFoundError:
+ else:
+     _mswindows = True
+ 
+-# wasm32-emscripten and wasm32-wasi do not support processes
+-_can_fork_exec = sys.platform not in {"emscripten", "wasi"}
++# wasm32-emscripten, wasm32-wasi and the Nintendo Switch (horizon) do not
++# support processes
++_can_fork_exec = sys.platform not in {"emscripten", "wasi", "horizon"}
+ 
+ if _mswindows:
+     import _winapi
