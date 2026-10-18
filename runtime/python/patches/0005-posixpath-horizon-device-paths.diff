@@ -1,0 +1,51 @@
+diff --git a/Lib/posixpath.py b/Lib/posixpath.py
+index f1e4237..7ddacff 100644
+--- a/Lib/posixpath.py
++++ b/Lib/posixpath.py
+@@ -54,6 +54,17 @@ def normcase(s):
+     return os.fspath(s)
+ 
+ 
++# Nintendo Switch (Horizon): paths carry a device prefix ("sdmc:/x",
++# "romfs:/x") and such paths are absolute. Horizon filesystems have no
++# symbolic links.
++_horizon = sys.platform == "horizon"
++
++
++def _device_abs(s, sep):
++    i = s.find(sep)
++    return i > 1 and s[i - 1:i] == (':' if isinstance(s, str) else b':')
++
++
+ # Return whether a path is absolute.
+ # Trivial in Posix, harder on the Mac or MS-DOS.
+ 
+@@ -61,7 +72,7 @@ def isabs(s):
+     """Test whether a path is absolute"""
+     s = os.fspath(s)
+     sep = _get_sep(s)
+-    return s.startswith(sep)
++    return s.startswith(sep) or (_horizon and _device_abs(s, sep))
+ 
+ 
+ # Join pathnames.
+@@ -80,7 +91,7 @@ def join(a, *p):
+         if not p:
+             path[:0] + sep  #23780: Ensure compatible data type even if p is null.
+         for b in map(os.fspath, p):
+-            if b.startswith(sep):
++            if b.startswith(sep) or (_horizon and _device_abs(b, sep)):
+                 path = b
+             elif not path or path.endswith(sep):
+                 path += b
+@@ -424,6 +435,10 @@ def realpath(filename, *, strict=False):
+     """Return the canonical path of the specified filename, eliminating any
+ symbolic links encountered in the path."""
+     filename = os.fspath(filename)
++    if _horizon:
++        if strict:
++            os.stat(filename)
++        return abspath(filename)
+     path, ok = _joinrealpath(filename[:0], filename, strict, {})
+     return abspath(path)
+ 

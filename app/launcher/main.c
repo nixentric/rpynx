@@ -473,7 +473,8 @@ static void chain_load(const char *nro, const char *args)
         status(C_BAD "Runtime not installed: %s" C_RESET, nro);
         return;
     }
-    snprintf(argv, sizeof argv, "%s --return %s %s", nro, g.self_path, args);
+    /* libnx splits on spaces and strips "..." around an argument. */
+    snprintf(argv, sizeof argv, "\"%s\" --return \"%s\" %s", nro, g.self_path, args);
     Result rc = envSetNextLoad(nro, argv);
     if (R_FAILED(rc)) {
         status(C_BAD "envSetNextLoad failed: 0x%x" C_RESET, (unsigned)rc);
@@ -503,8 +504,17 @@ static void on_action(rsl_action a)
         if (!g.game_count) break;
         if (a == RSL_ACT_UP) g.sel = (g.sel + g.game_count - 1) % g.game_count;
         if (a == RSL_ACT_DOWN) g.sel = (g.sel + 1) % g.game_count;
-        if (a == RSL_ACT_CONFIRM)
-            status("Cannot launch %s: the Ren'Py runtime is not integrated yet.", g.games[g.sel]);
+        if (a == RSL_ACT_CONFIRM) {
+            char args[512];
+            if (!g.game_ok[g.sel])
+                status(C_BAD "%s has no game/ folder; copy the whole game folder." C_RESET, g.games[g.sel]);
+            else if (strchr(g.games[g.sel], '"'))
+                status(C_BAD "Rename %s: folder names cannot contain quotes." C_RESET, g.games[g.sel]);
+            else {
+                snprintf(args, sizeof args, "--game \"" GAMES_DIR "/%s\"", g.games[g.sel]);
+                chain_load(RUNTIME_NRO, args);
+            }
+        }
         if (a == RSL_ACT_HIDE_UI) {
             char path[256], label[80];
             snprintf(path, sizeof path, CTRL_DIR "/games/%s.json", g.games[g.sel]);
@@ -520,7 +530,7 @@ static void on_action(rsl_action a)
         break;
     case SCR_DIAG:
         if (a == RSL_ACT_BACK) go(SCR_MAIN);
-        if (a == RSL_ACT_CONFIRM) chain_load(RUNTIME_NRO, "romfs:/selftest.py");
+        if (a == RSL_ACT_CONFIRM) chain_load(RUNTIME_NRO, "\"romfs:/selftest.py\"");
         break;
     case SCR_TEST:
         break;

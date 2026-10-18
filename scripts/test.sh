@@ -10,3 +10,10 @@ cc -std=gnu11 -g -O1 -Wall -Wextra -Werror -Wno-deprecated-declarations -fsaniti
     platform/filesystem/fs.c third_party/cjson/cJSON.c \
     -lm -o "$out/test_input"
 "$out/test_input"
+
+# Python-side tests need Docker and the host CPython from `scripts/build.sh python`.
+if command -v docker >/dev/null && [ -x build-python/host/bin/python3.12 ]; then
+    scripts/build.sh test-python
+else
+    echo "SKIPPED python tests (needs Docker and scripts/build.sh python)"
+fi

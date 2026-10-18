@@ -1,6 +1,8 @@
-/* newlib system hooks that libnx leaves unimplemented but CPython needs. */
+/* newlib functions that libnx leaves unimplemented but CPython or Ren'Py need. */
 #include <errno.h>
+#include <malloc.h>
 #include <reent.h>
+#include <stdlib.h>
 
 #include <switch.h>
 
@@ -14,5 +16,19 @@ int _getentropy_r(struct _reent *r, void *buf, size_t len)
         return -1;
     }
     randomGet(buf, len);
+    return 0;
+}
+
+/* posix_memalign() is declared by newlib but not implemented; Ren'Py's video
+ * decoder (src/ffmedia.c) uses it. newlib's memalign() memory is released
+ * with free(), as posix_memalign() requires. */
+int posix_memalign(void **memptr, size_t alignment, size_t size)
+{
+    if (alignment < sizeof(void *) || (alignment & (alignment - 1)) != 0)
+        return EINVAL;
+    void *p = memalign(alignment, size);
+    if (!p && size)
+        return ENOMEM;
+    *memptr = p;
     return 0;
 }

@@ -50,16 +50,22 @@ APP_AUTHOR	:=	Ren'Py Switch Loader contributors
 APP_VERSION	:=	0.1.0
 DATA		:=
 PYDIST		:=	$(CURDIR)/build-python/dist
+RENPYDIST	:=	$(CURDIR)/build-renpy/dist
 
 ifeq ($(PROGRAM),runtime)
 TARGET		:=	renpy-runtime
 BUILD		:=	build-runtime
-SOURCES		:=	runtime runtime/python app/diagnostics platform/filesystem
-INCLUDES	:=	app/diagnostics platform/filesystem build-python/dist/include/python3.12
+SOURCES		:=	runtime runtime/python app/diagnostics platform/input platform/filesystem third_party/cjson
+INCLUDES	:=	app/diagnostics platform/input platform/filesystem third_party/cjson build-python/dist/include/python3.12
 APP_TITLE	:=	Ren'Py Switch Runtime
 ROMFS		:=	build-runtime-romfs
-PROGRAM_LIBS	:=	-lpython3.12 -lz -lbz2 -llzma
-PROGRAM_LIBDIRS	:=	$(PYDIST)
+# Static archives with circular dependencies, so one group. GLESv2 is reached
+# through SDL_GL_GetProcAddress (Ren'Py's uguu loader) but must be linked.
+PROGRAM_LIBS	:=	-Wl,--start-group -lrenpy -lpython3.12 -lSDL2_image -lSDL2 -lEGL -lGLESv2 -lglapi \
+			-ldrm_nouveau -lavformat -lavcodec -lswresample -lswscale -lavutil -ldav1d \
+			-lharfbuzz -lfreetype -lfribidi -lpng16 -ljpeg -lwebp -lbz2 -llzma -lz \
+			-lstdc++ -Wl,--end-group
+PROGRAM_LIBDIRS	:=	$(PYDIST) $(RENPYDIST)
 else
 TARGET		:=	renpy-loader
 BUILD		:=	build-switch
@@ -181,7 +187,7 @@ ifneq ($(ROMFS),)
 	export NROFLAGS += --romfsdir=$(CURDIR)/$(ROMFS)
 endif
 
-.PHONY: $(BUILD) clean all python runtime romfs
+.PHONY: $(BUILD) clean all python renpy runtime romfs test-python
 
 #---------------------------------------------------------------------------------
 all: $(BUILD)
@@ -192,10 +198,19 @@ python:
 runtime:
 	@$(MAKE) --no-print-directory PROGRAM=runtime
 
-# Runtime RomFS: compiled stdlib + the Milestone 3 self-test script.
+renpy:
+	runtime/renpy/build.sh
+
+# Python-side tests, run with the host CPython 3.12.8 from `make python`.
+test-python:
+	build-python/host/bin/python3.12 tests/unit/test_posixpath_horizon.py build-python/src/Python-3.12.8/Lib/posixpath.py
+
+# Runtime RomFS: compiled stdlib, the Ren'Py engine (renpy-base) and the
+# Python self-test.
 romfs:
 	@rm -rf $(ROMFS) && mkdir -p $(ROMFS)/lib
 	@cp $(PYDIST)/lib/python312.zip $(ROMFS)/lib/
+	@cp -R $(RENPYDIST)/renpy-base $(ROMFS)/
 	@cp runtime/python/selftest.py $(ROMFS)/
 
 $(BUILD): $(if $(ROMFS),romfs)
