@@ -202,8 +202,10 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H35.
 
 - Loader UI is a text console. The graphical library is Milestone 7.
 - The in-game loader overlay is not built; L-stick press only shows a notice.
-- Live2D and 3D models are unsupported. FFmpeg is linked statically, so LGPL relinking
-  materials are still to be produced before distributing builds.
+- Live2D and 3D models are unsupported.
+- devkitPro's switch-ffmpeg is built with `--enable-gpl` and linked statically, so a
+  distributed `renpy-runtime.nro` is covered by the GPL (v2 or later): ship the source with
+  it. Building FFmpeg as LGPL would need its own build and relinking materials.
 - The runtime `.nro` is 55 MB; no memory or load-time measurement on hardware yet.
 - The emergency combo needs both + and −, so a single detached Joy-Con cannot do it.
 - The launcher UI state machine has no automated test (it needs libnx); the engine under it is tested.
@@ -213,7 +215,7 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H35.
   subprocess spawning and `multiprocessing`. Games that need these will fail. See
   `runtime/python/README.md`.
 - Chain-loading needs the loader to be started from the Homebrew Menu.
-- The project license is not chosen yet.
+- License: the project's source is MIT (`LICENSE`); see README "Legal" for the binaries.
 - Crash after returning from a game (run 9): SDL's timer thread from the runtime keeps
   running after the runtime's code is unloaded, then crashes the loader. Fixed in runtime
   `fed4dc1b…`, confirmed on the console (run 10).

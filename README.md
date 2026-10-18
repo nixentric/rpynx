@@ -68,5 +68,18 @@ scripts/test.sh
 This repository contains no game assets and no Nintendo SDK material, and it does not
 circumvent DRM. Use only games you own in DRM-free form.
 
-Third-party code: cJSON 1.7.18 (MIT, `third_party/cjson/LICENSE`). The project's own
-license has not been chosen yet.
+The project's own source code is under the MIT License ([LICENSE](LICENSE)).
+
+Third-party code in this repository: cJSON 1.7.18 (MIT, `third_party/cjson/LICENSE`).
+
+The built `.nro` files also contain third-party code under its own licenses, which MIT does
+not replace:
+- `renpy-loader.nro`: libnx (ISC) and cJSON (MIT).
+- `renpy-runtime.nro`: CPython (PSF), Ren'Py (MIT, with LGPL-derived parts),
+  SDL2 (zlib), Mesa (MIT), libnx (ISC) and others.
+  - It also statically links devkitPro's switch-ffmpeg, which is **built with `--enable-gpl`**.
+  - So the runtime binary as a whole is covered by the **GPL (version 2 or later)**.
+  - Anyone who distributes it must provide the complete corresponding source, or a written
+    offer for it. Personal use is not affected.
+  - To make it LGPL instead, build FFmpeg without `--enable-gpl`. LGPL relinking materials
+    would still be needed, because it is linked statically.
