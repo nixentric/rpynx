@@ -80,6 +80,8 @@ static struct {
     int evcount;
     uint32_t back_since;
     bool back_held;
+    bool dirty;                    /* redraw on the next frame */
+    uint32_t last_draw;
 } g;
 
 static uint32_t now_ms(void)
@@ -94,6 +96,7 @@ static void status(const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(g.status, sizeof g.status, fmt, ap);
     va_end(ap);
+    g.dirty = true;
     rsl_log("%s", g.status);
 }
 
@@ -159,6 +162,7 @@ static void on_applet(AppletHookType hook, void *param)
 
 static void go(screen_id s)
 {
+    g.dirty = true;
     g.screen = s;
     g.sel = 0;
     g.capture = -1;
@@ -595,6 +599,18 @@ static void frame(float dt)
         else if (g.now - g.back_since >= 1000)
             go(SCR_MAIN), g.back_held = false;
     }
+
+    /* The libnx console renders text on the CPU. Redraw only when something
+     * can have changed: input, a button capture, the live test screen, or once
+     * a second (diagnostics). Otherwise just keep polling input at ~60 Hz. */
+    bool redraw = g.dirty || g.in.event_count > 0 || g.in.pressed_buttons || g.capture >= 0 ||
+                  g.screen == SCR_TEST || g.now - g.last_draw >= 1000;
+    if (!redraw) {
+        svcSleepThread(16000000ULL);
+        return;
+    }
+    g.dirty = false;
+    g.last_draw = g.now;
 
     consoleClear();
     switch (g.screen) {

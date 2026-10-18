@@ -18,6 +18,8 @@ turns those actions into Ren'Py events, on Ren'Py's own thread:
 Ren'Py's own SDL game-controller support is disabled; otherwise every press
 would arrive twice (and with SDL's position-based A/B naming).
 """
+import time
+
 import renpy
 import renpy.display.controller
 import renpy.pygame as pygame
@@ -108,10 +110,11 @@ def _post_mouse_button(down):
 
 
 def step():
-    """Read the controllers once and post the resulting Ren'Py events."""
+    """Read the controllers once and post the resulting Ren'Py events.
+    Returns True if there was any controller activity."""
     interface = renpy.display.interface
     if interface is None or not interface.started:
-        return
+        return False
 
     events, cx, cy, moved = _rslnx.input_poll()
     for kind, action in events:
@@ -133,6 +136,7 @@ def step():
 
     if moved and renpy.display.draw is not None:
         renpy.display.draw.set_mouse_pos(cx * renpy.config.screen_width, cy * renpy.config.screen_height)
+    return bool(events) or bool(moved)
 
 
 def poll():
@@ -140,15 +144,24 @@ def poll():
     return _orig_poll()
 
 
+# Ren'Py blocks in wait() when idle. Read the controllers every 16 ms while
+# they are in use, every 33 ms after 2 s without input (less wake-ups, less
+# heat; at most ~33 ms extra latency on the first press).
+ACTIVE_MS, IDLE_MS, IDLE_AFTER = 16, 33, 2.0
+_last_activity = 0.0
+
+
 def wait():
-    # Ren'Py blocks here when idle. Wake every 16 ms to read the controllers;
-    # _rslnx.wait_event releases the GIL while SDL waits.
+    global _last_activity
     while True:
-        step()
+        now = time.monotonic()
+        if step():
+            _last_activity = now
         ev = _orig_poll()
         if ev.type != pygame.NOEVENT:
             return ev
-        _rslnx.wait_event(16)
+        # _rslnx.wait_event releases the GIL while SDL waits.
+        _rslnx.wait_event(ACTIVE_MS if now - _last_activity < IDLE_AFTER else IDLE_MS)
 
 
 def install():

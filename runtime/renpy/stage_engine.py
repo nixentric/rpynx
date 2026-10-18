@@ -59,23 +59,31 @@ def main():
     for overlay in overlays:
         copy_tree(overlay, out)
 
+    # Includes sub-folders (common/_layout, common/_developer): missing ones were
+    # recompiled on every launch on the console (hardware run 5).
     common = os.path.join(out, "renpy", "common")
-    added = 0
-    for name in sorted(os.listdir(sdk_common)):
-        if not name.endswith((".rpyc", ".rpymc")):
-            continue
-        ours = source_for(os.path.join(common, name))
-        if not os.path.exists(ours):
-            sys.exit("SDK %s has no matching source in this Ren'Py tree" % name)
-        with open(ours, "rb") as f:
-            want = hashlib.md5(f.read() + magic).digest()
-        with open(os.path.join(sdk_common, name), "rb") as f:
-            data = f.read()
-        if data[-16:] != want:
-            sys.exit("SDK %s was compiled from a different %s" % (name, os.path.basename(ours)))
-        with open(os.path.join(common, name), "wb") as f:
-            f.write(data)
-        added += 1
+    added = skipped = 0
+    for root, dirs, files in os.walk(sdk_common):
+        dirs.sort()
+        for name in sorted(files):
+            if not name.endswith((".rpyc", ".rpymc")):
+                continue
+            rel = os.path.relpath(os.path.join(root, name), sdk_common)
+            ours = source_for(os.path.join(common, rel))
+            if not os.path.exists(ours):
+                sys.exit("SDK %s has no matching source in this Ren'Py tree" % rel)
+            with open(ours, "rb") as f:
+                want = hashlib.md5(f.read() + magic).digest()
+            with open(os.path.join(root, name), "rb") as f:
+                data = f.read()
+            if data[-16:] != want:
+                # Ren'Py would reject it at load as well and compile the source.
+                print("skip %s: compiled from a different source" % rel)
+                skipped += 1
+                continue
+            with open(os.path.join(common, rel), "wb") as f:
+                f.write(data)
+            added += 1
 
     compiled = 0
     for root, dirs, files in os.walk(out):
@@ -89,7 +97,8 @@ def main():
                     dfile=ROMFS_BASE + "/" + rel, doraise=True,
                     invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH)
                 compiled += 1
-    print("%s: %d .py compiled, %d common scripts precompiled (digests verified)" % (out, compiled, added))
+    print("%s: %d .py compiled, %d common scripts precompiled (digests verified), %d skipped"
+          % (out, compiled, added, skipped))
 
 
 if __name__ == "__main__":

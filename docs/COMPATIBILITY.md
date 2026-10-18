@@ -7,7 +7,7 @@ but tests are incomplete or issues are known. **Unsupported** = cannot run relia
 
 | Ren'Py | Python | Status | Notes |
 |---|---|---|---|
-| 8.5.x | 3.12 | Unsupported until hardware-tested | Phase 1: Ren'Py 8.5.3 + CPython 3.12.8 build and link; bridge passes the desktop test; never run on a Switch |
+| 8.5.x | 3.12 | **Experimental** | Ren'Py 8.5.3 runs on the Switch (GLES 3.2 on nouveau); first game launched 2026-10-18 |
 | 8.0–8.4 | 3.9 / 3.12 | Unsupported | Phase 2: test whether 8.5.3 loads their `.rpyc` |
 | 7.x | 2.7 | Unsupported | Phase 3: separate Python 2.7 runtime, if feasible |
 | ≤ 6.x | 2.x | Unsupported | Not planned |
@@ -18,7 +18,7 @@ No game has been tested. Rows are added only with a test record from `docs/HARDW
 
 | Game | Source | Ren'Py | Status | Tested on | Notes |
 |---|---|---|---|---|---|
-| The Question | bundled with the Ren'Py SDK | 8.5.3 | Untested on Switch | Desktop only: official SDK + our boot/bridge, 24/24 checks | Not a Switch result |
+| The Question | bundled with the Ren'Py SDK | 8.5.3 | **Experimental** | Switch, handheld, application mode, 2026-10-18 (run 5): starts, renders on GPU, dialogue, menus, clean quit | Audio, saves, suspend, touch not yet checked on hardware |
 
 ## Loader features
 

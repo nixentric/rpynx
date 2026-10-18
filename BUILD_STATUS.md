@@ -11,8 +11,10 @@ Last updated: 2026-10-18
 | 3 Python runtime | Static CPython 3.12.8 cross-builds; runtime `.nro` links and runs a self-test. **HARDWARE UNVERIFIED** |
 | 4 Ren'Py engine | Ren'Py 8.5.3 builds and links into the runtime. Library → Launch is wired. The controller bridge passes 24/24 checks on desktop against the official engine. **HARDWARE UNVERIFIED** |
 
-**No game has been run on a Switch.** Whether Ren'Py starts on the console (GLES on nouveau,
-memory) is the open question; H22 and H26 answer it.
+**Ren'Py 8.5.3 runs on a real Switch** (2026-10-18, run 5): "The Question" starts, renders
+with GLES 3.2 on nouveau, shows dialogue and quits cleanly. Audio, saves, suspend, touch
+and the cursor are still unverified on hardware. See
+[tests/hardware/results](tests/hardware/results/).
 
 ## Implemented
 

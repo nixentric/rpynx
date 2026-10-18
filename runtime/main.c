@@ -424,6 +424,14 @@ static int run_game(struct job *job, const char *game, const char *savedir_arg, 
     snprintf(pylog, sizeof pylog, "%s/python.txt", logdir);
     setenv("RSL_PYLOG", pylog, 1);   /* Python stdout/stderr, incl. tracebacks */
     setenv("RENPY_PLATFORM", "switch-aarch64", 1);
+    /* "~" must exist: Ren'Py keeps save-security keys and shared
+     * persistent data under ~/.renpy. Unset, it became a literal "~" folder
+     * next to the runtime (hardware run 5). */
+    rsl_mkdirs(ROOT "/home");
+    setenv("HOME", ROOT "/home", 1);
+    /* Ren'Py's developer safety net copies .rpy files to ~/.renpy/backups
+     * whenever it compiles one; pointless on a console and 1.3 s per launch. */
+    setenv("RENPY_DISABLE_BACKUPS", "I take responsibility for this.", 1);
     setenv("RENPY_RENDERER", "gles2", 1);
     load_controls(id);
     rsl_log("runtime start: game %s, saves %s, applet type %d", basedir, savedir, (int)appletGetAppletType());
