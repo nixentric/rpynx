@@ -11,10 +11,32 @@ import sys
 import time
 
 results = []
+SCRATCH = sys.argv[1] if len(sys.argv) > 1 else None
+
+# Progress goes to the report file as it happens (flushed and synced), so a
+# hang or crash still shows which check was running.
+_report = open(os.path.join(SCRATCH, "python-selftest.txt"), "w", encoding="utf-8") if SCRATCH else None
+
+
+def progress(text):
+    print(text, flush=True)
+    if _report:
+        _report.write(text + "\n")
+        _report.flush()
+        os.fsync(_report.fileno())
+
+
+try:
+    import faulthandler
+    if _report:
+        faulthandler.dump_traceback_later(30, repeat=True, file=_report)
+except Exception as e:
+    progress("faulthandler unavailable: %r" % (e,))
 
 
 def check(name, required=True):
     def wrap(fn):
+        progress("... " + name)
         t0 = time.perf_counter()
         try:
             detail = fn() or ""
@@ -24,6 +46,7 @@ def check(name, required=True):
             ok = False
         ms = (time.perf_counter() - t0) * 1000
         results.append((name, ok, required, "%s (%.0f ms)" % (detail, ms)))
+        progress("%s %s %s (%.0f ms)" % ("PASS" if ok else ("FAIL" if required else "n/a "), name, detail, ms))
         return fn
     return wrap
 
@@ -102,9 +125,6 @@ def _():
     assert q.qsize() == 4
 
 
-SCRATCH = sys.argv[1] if len(sys.argv) > 1 else None
-
-
 @check("filesystem")
 def _():
     import shutil, tempfile
@@ -165,11 +185,11 @@ def main():
         failed += (not ok) and required
         lines.append("%s %-28s %s" % (tag, name, detail))
     lines.append("%d required check(s) failed" % failed)
-    report = "\n".join(lines)
-    print(report)
-    if SCRATCH:
-        with open(os.path.join(SCRATCH, "python-selftest.txt"), "w", encoding="utf-8") as f:
-            f.write(report + "\n")
+    progress("\n== summary ==\n" + "\n".join(lines))
+    try:
+        faulthandler.cancel_dump_traceback_later()
+    except Exception:
+        pass
     return failed
 
 

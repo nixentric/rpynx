@@ -105,6 +105,15 @@ itself. It does not prove anything about Horizon.
 
 ## Hardware verification
 
+**First console run, 2026-10-18** ([tests/hardware/results/2026-10-18-run1.md](tests/hardware/results/2026-10-18-run1.md)):
+- PASS: loader launch, folders, controller detection, runtime found, chain-load both
+  ways, CPython 3.12.8 initialises on the console.
+- FAIL: the self-test stalled with no visible output, and Ren'Py exited with status 1
+  immediately. Both errors were invisible because CPython dropped stdout/stderr on the
+  libnx console; that is fixed for run 2.
+
+Everything else below remains unverified.
+
 **HARDWARE UNVERIFIED.** Neither `.nro` has run on a Switch or an emulator. Untested on device:
 - launch, rendering, button and stick reading, touch;
 - SD writes, sleep/resume, controller reconnect, docked mode;

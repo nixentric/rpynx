@@ -191,6 +191,23 @@ static int exit_code_of(PyObject *exc)
     return rc;
 }
 
+/* CPython checks stdout/stderr with fstat(), which libnx's console device does
+ * not implement, so it leaves sys.stdout/sys.stderr as None and every print()
+ * and traceback is silently dropped. Reattach them: to RSL_PYLOG (a file) if
+ * set, otherwise to fds 1/2 (the console; FileIO tolerates the fstat error). */
+static const char STDIO_SETUP[] =
+    "import io, os, sys\n"
+    "def _rsl_fd(fd):\n"
+    "    return io.TextIOWrapper(io.FileIO(fd, 'w', closefd=False), encoding='utf-8',\n"
+    "                            errors='backslashreplace', line_buffering=True)\n"
+    "_rsl_log = os.environ.get('RSL_PYLOG')\n"
+    "if _rsl_log:\n"
+    "    sys.stdout = sys.stderr = open(_rsl_log, 'a', encoding='utf-8', errors='backslashreplace', buffering=1)\n"
+    "else:\n"
+    "    if sys.stdout is None: sys.stdout = _rsl_fd(1)\n"
+    "    if sys.stderr is None: sys.stderr = _rsl_fd(2)\n"
+    "del _rsl_fd, _rsl_log\n";
+
 /* Returns the script's exit status, or -1 if Python itself failed. */
 static int run_python(struct job *j)
 {
@@ -224,6 +241,8 @@ static int run_python(struct job *j)
         return -1;
     }
     rsl_log("Python %s initialised", Py_GetVersion());
+    if (PyRun_SimpleString(STDIO_SETUP) != 0)
+        rsl_log("could not attach Python stdout/stderr");
 
     int rc = 0;
     FILE *f = fopen(j->script, "rb");
@@ -315,6 +334,9 @@ static int run_game(struct job *job, const char *game, const char *savedir_arg, 
     if (!rsl_mkdirs(logdir) || !rsl_mkdirs(savedir))
         rsl_log("cannot create %s or %s (SD card full or read-only?)", logdir, savedir);
     setenv("RSL_LOGDIR", logdir, 1);
+    static char pylog[600];
+    snprintf(pylog, sizeof pylog, "%s/python.txt", logdir);
+    setenv("RSL_PYLOG", pylog, 1);   /* Python stdout/stderr, incl. tracebacks */
     setenv("RENPY_PLATFORM", "switch-aarch64", 1);
     setenv("RENPY_RENDERER", "gles2", 1);
     load_controls(id);
@@ -336,7 +358,8 @@ static int run_game(struct job *job, const char *game, const char *savedir_arg, 
     if (job->rc != 0) {
         consoleInit(NULL);
         printf("Ren'Py stopped with status %d.\n\nDetails are in:\n", job->rc);
-        printf("  %s/log.txt\n  %s/traceback.txt\n  " ROOT "/logs/runtime.log\n\n", logdir, logdir);
+        printf("  %s/python.txt\n  %s/log.txt\n  %s/traceback.txt\n  " ROOT "/logs/runtime.log\n\n",
+               logdir, logdir, logdir);
         printf("Press + to %s.\n", ret ? "return to the library" : "exit");
         wait_for_plus();
         consoleExit(NULL);
