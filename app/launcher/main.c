@@ -13,6 +13,7 @@
 
 #include <switch.h>
 
+#include "cJSON.h"
 #include "fs.h"
 #include "input.h"
 #include "input_config.h"
@@ -67,6 +68,16 @@ static struct {
 
     char games[MAX_GAMES][64];
     bool game_ok[MAX_GAMES];
+    struct game_info {
+        char renpy[24];            /* Ren'Py version from manifest.json, "" if none */
+        char state[16];            /* experimental / unsupported; "" without manifest */
+        char runtime[49];          /* runtime the game needs */
+        char nro[160];             /* where that runtime would be */
+        char problem[160];         /* why it must not start, "" if it may */
+        int issues;                /* performance.issues from the importer */
+        char issue[2][160];        /* the first two of them */
+        bool recompile, runtime_ok;
+    } info[MAX_GAMES];
     int game_count;
 
     rsl_input_config edit;
@@ -180,6 +191,60 @@ static void go(screen_id s)
 
 /* ------------------------------------------------------------------ library */
 
+/* What a game needs, from the manifest.json the importer writes
+ * (docs/IMPORTER.md). A game copied by hand has none and gets the default
+ * runtime. Fills gi->problem when the game must not start. */
+static void read_manifest(const char *game, struct game_info *gi)
+{
+    char path[256], err[128];
+    struct stat st;
+    memset(gi, 0, sizeof *gi);
+    strcpy(gi->runtime, "renpy-8.5.3");
+    snprintf(path, sizeof path, GAMES_DIR "/%s/manifest.json", game);
+    char *text = rsl_read_file(path, 1 << 20, NULL, err, sizeof err);
+    if (text) {
+        cJSON *m = cJSON_Parse(text);
+        free(text);
+        const char *format = cJSON_GetStringValue(cJSON_GetObjectItem(m, "format"));
+        const char *state = cJSON_GetStringValue(cJSON_GetObjectItem(m, "status"));
+        const char *runtime = cJSON_GetStringValue(cJSON_GetObjectItem(m, "runtime"));
+        const char *version = cJSON_GetStringValue(cJSON_GetObjectItem(m, "renpy_version"));
+        const char *reason = cJSON_GetStringValue(cJSON_GetArrayItem(cJSON_GetObjectItem(m, "reasons"), 0));
+        snprintf(gi->renpy, sizeof gi->renpy, "%s", version ? version : "?");
+        snprintf(gi->state, sizeof gi->state, "%s", state ? state : "?");
+        gi->recompile = cJSON_IsTrue(cJSON_GetObjectItem(m, "recompile"));
+        cJSON *issues = cJSON_GetObjectItem(cJSON_GetObjectItem(m, "performance"), "issues");
+        gi->issues = cJSON_GetArraySize(issues);
+        for (int i = 0; i < 2 && i < gi->issues; i++) {
+            const char *text = cJSON_GetStringValue(cJSON_GetArrayItem(issues, i));
+            snprintf(gi->issue[i], sizeof gi->issue[i], "%s", text ? text : "?");
+        }
+        gi->runtime[0] = '\0';
+        if (!format || strcmp(format, "renpy-switch-loader/manifest") != 0)
+            snprintf(gi->problem, sizeof gi->problem, "manifest.json is unreadable; export the game again.");
+        else if (!state || strcmp(state, "unsupported") == 0 || !runtime)
+            snprintf(gi->problem, sizeof gi->problem, "cannot run here: %.130s", reason ? reason : "unsupported");
+        else if (!runtime[0] || strlen(runtime) >= sizeof gi->runtime ||
+                 strspn(runtime, "abcdefghijklmnopqrstuvwxyz0123456789.-") != strlen(runtime))
+            snprintf(gi->problem, sizeof gi->problem, "bad runtime name in manifest.json.");
+        else
+            strcpy(gi->runtime, runtime);
+        cJSON_Delete(m);
+    }
+    if (!gi->runtime[0])
+        return;
+    char runtime[sizeof gi->runtime], nro[sizeof gi->nro];
+    strcpy(runtime, gi->runtime);
+    snprintf(nro, sizeof nro, ROOT "/runtimes/%s.nro", runtime);
+    /* renpy-8.5.3 is the runtime installed as renpy-runtime.nro. */
+    if (stat(nro, &st) != 0 && strcmp(runtime, "renpy-8.5.3") == 0)
+        snprintf(nro, sizeof nro, "%s", RUNTIME_NRO);
+    strcpy(gi->nro, nro);
+    gi->runtime_ok = stat(nro, &st) == 0;
+    if (!gi->runtime_ok)
+        snprintf(gi->problem, sizeof gi->problem, "needs runtime %s; copy it to %.90s", runtime, nro);
+}
+
 static void scan_games(void)
 {
     g.game_count = 0;
@@ -200,6 +265,7 @@ static void scan_games(void)
         strcpy(g.games[g.game_count], e->d_name);
         snprintf(p, sizeof p, "%s/%s/game", GAMES_DIR, e->d_name);
         g.game_ok[g.game_count] = stat(p, &st) == 0 && S_ISDIR(st.st_mode);
+        read_manifest(e->d_name, &g.info[g.game_count]);
         g.game_count++;
     }
     closedir(d);
@@ -407,9 +473,33 @@ static void draw_library(void)
     printf("Game Library  (%s)\n\n", GAMES_DIR);
     if (g.game_count == 0)
         printf("No game folders found. See docs/INSTALL.md.\n");
-    for (int i = 0; i < g.game_count; i++)
-        printf("%s %s %-40s %s\n" C_RESET, i == g.sel ? C_SEL : "", i == g.sel ? ">" : " ",
-               g.games[i], g.game_ok[i] ? "game/ found" : C_BAD "no game/ folder");
+    else
+        printf("  %-26s %-9s %-13s %s\n", "Game", "Ren'Py", "Status", "Runtime");
+    bool any_recompiled = false;
+    for (int i = 0; i < g.game_count; i++) {
+        const struct game_info *gi = &g.info[i];
+        char version[16];
+        snprintf(version, sizeof version, "%.10s%s", gi->renpy[0] ? gi->renpy : "-", gi->recompile ? "*" : "");
+        any_recompiled |= gi->recompile;
+        printf("%s%s %-26.26s %-9.9s ", i == g.sel ? C_SEL : "", i == g.sel ? ">" : " ", g.games[i], version);
+        if (!g.game_ok[i])
+            printf(C_BAD "no game/ folder" C_RESET "\n");
+        else if (!gi->runtime[0])
+            printf(C_BAD "%-13.13s none" C_RESET "\n", gi->state[0] ? gi->state : "bad manifest");
+        else
+            printf("%-13.13s %-14.14s %s" C_RESET "%s\n", gi->state[0] ? gi->state : "no manifest", gi->runtime,
+                   gi->runtime_ok ? C_GOOD "installed" : C_BAD "MISSING", gi->issues ? C_BAD " !" C_RESET : "");
+    }
+    if (any_recompiled)
+        printf("\n* Ren'Py 7 game recompiled from its .rpy sources for Ren'Py 8 (experimental).\n");
+    if (g.game_count && g.info[g.sel].issues) {
+        /* Not optimised for the Switch: heavier, hotter, maybe choppy (docs/IMPORTER.md). */
+        const struct game_info *gi = &g.info[g.sel];
+        printf("\n" C_BAD "! %s: %d performance issue(s) from the importer:" C_RESET "\n",
+               g.games[g.sel], gi->issues);
+        for (int i = 0; i < 2 && i < gi->issues; i++)
+            printf("  - %.150s\n", gi->issue[i]);
+    }
     printf("\n[%s] launch  [%s] per-game controls  [%s] back\n", key(RSL_ACT_CONFIRM),
            key(RSL_ACT_HIDE_UI), key(RSL_ACT_BACK));
 }
@@ -535,9 +625,12 @@ static void on_action(rsl_action a)
                        "mode: start the loader by holding R while opening a game. Games can crash\n"
                        "the whole console here. Press %s again within 5 s to launch anyway." C_RESET,
                        (unsigned long long)(total >> 20), key(RSL_ACT_CONFIRM));
+            } else if (g.info[g.sel].problem[0]) {
+                status(C_BAD "%s: %s" C_RESET, g.games[g.sel], g.info[g.sel].problem);
             } else {
+                rsl_log("%s: runtime %s (%s)", g.games[g.sel], g.info[g.sel].runtime, g.info[g.sel].nro);
                 snprintf(args, sizeof args, "--game \"" GAMES_DIR "/%s\"", g.games[g.sel]);
-                chain_load(RUNTIME_NRO, args);
+                chain_load(g.info[g.sel].nro, args);
             }
         }
         if (a == RSL_ACT_HIDE_UI) {

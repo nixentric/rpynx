@@ -10,7 +10,7 @@ Last updated: 2026-10-19
 | 2 Input system | Code complete, host-tested. **HARDWARE UNVERIFIED** |
 | 3 Python runtime | Static CPython 3.12.8 cross-builds; runtime `.nro` links and runs a self-test. **HARDWARE UNVERIFIED** |
 | 4 Ren'Py engine | Ren'Py 8.5.3 builds and links into the runtime. Library → Launch is wired. The controller bridge passes 24/24 checks on desktop against the official engine. **HARDWARE UNVERIFIED** |
-| 5 Importer | macOS importer: folder/ZIP/7z/RAR → compatibility report, `manifest.json`, SD export. Host-tested (16 tests). Its export of The Question launched on a Switch (run 9) |
+| 5 Importer | macOS importer: folder/ZIP/7z/RAR → compatibility report, `manifest.json`, SD export. Host-tested (25 tests). Its export of The Question launched on a Switch (run 9) |
 
 **Ren'Py 8.5.3 runs on a real Switch** (2026-10-18, run 5): "The Question" starts, renders
 with GLES 3.2 on nouveau, shows dialogue and quits cleanly. Audio, saves, suspend, touch
@@ -27,6 +27,10 @@ and the cursor are still unverified on hardware. See
 - Text-console UI: main menu, game folder listing, controller settings, controller test,
   diagnostics (applet type, docked/handheld, memory, runtime presence, log tail).
 - Diagnostics → A chain-loads the runtime's Python self-test, which returns to the loader afterwards.
+- Game Library reads each game's `manifest.json`:
+  - it shows the Ren'Py version, status, runtime, and whether that runtime is installed;
+  - Launch starts that runtime;
+  - it refuses `unsupported` games, and games whose runtime is missing.
 
 **Input pipeline** (libnx HID → Nintendo-label normaliser → mapping engine → logical actions)
 - 16 logical actions with press, hold and repeat behaviour.
@@ -51,6 +55,34 @@ and the cursor are still unverified on hardware. See
 - Stdlib compiled to sourceless `.pyc` in RomFS.
 - Python runs on an 8 MiB-stack thread while the main thread keeps servicing applet events.
 - `_rslnx` module for memory and applet facts; `--return` chain-loads back to the loader.
+- Ren'Py 7 compat (`rsl_bridge`): for games with `script_version` ≤ 7.5.3/8.0.3, a language
+  change does not re-run `define gui.*`. Ren'Py 8.5.3 does, which erased gui values the game
+  set in `init python`.
+  - Test: `tests/integration/renpy_desktop/compat.sh`.
+- 30 fps power saver, global (`config/power-saver`) or per game (a `power-saver` file in
+  the game's folder).
+- Switch keyboard: the full system keyboard (`_rslnx.keyboard`, libnx `swkbdShow`). It opens
+  once per text field, with its own text box and the field's current text.
+  - OK puts the text into the field; nothing moves on by itself.
+  - Y, or A with nothing selected, reopens it.
+  - A presses Enter only on a screen with no buttons at all (A cannot submit a Ren'Py
+    input).
+  - SDL's inline keyboard is no longer used.
+- B goes back (rollback) in the game; in menus it still closes the menu.
+- Button selection (`rsl_bridge`): when a new screen with buttons appears and nothing (or
+  only a pause) is focused, its first button is selected. Examples: New Game, the first
+  choice, the first card.
+  - It considers only buttons of the content screen (never `config.overlay_screens`, such as
+    the quick menu).
+  - It skips dialogue and active text fields.
+  - It applies to every game.
+- The virtual cursor stays hidden until the stick moves, and hides again on button presses.
+  Its image (`runtime/renpy/make_cursor.py`) is a black arrow with a white outline and
+  rounded, anti-aliased corners, in the style of Bibata Modern Classic but drawn from
+  scratch (Bibata is GPL-3.0). Hotspot at the black tip (4, 3).
+- `tests/integration/renpy_desktop/compat.sh`: 14 checks on synthetic games, with plain-8.5.3
+  repros and an emulated Switch keyboard. The Question desktop scenario: 26 checks (B in game
+  added).
 
 **Importer (`importer/rsl_import.py`, macOS, standard library only)** — see `docs/IMPORTER.md`
 - Inputs: a game folder, `.zip`, or `.7z`/`.rar` through the `7z` CLI.
@@ -60,6 +92,17 @@ and the cursor are still unverified on hardware. See
   or 3, custom Python, Windows native code, uncommon media and non-ASCII names.
 - Writes `games/<id>/game` + versioned `manifest.json` (`experimental` or `unsupported`,
   never `verified`). Refuses to overwrite without `--replace`, and keeps saves.
+- `--recompile` (experiment): a Ren'Py 7 game with `.rpy` sources is exported without
+  `.rpyc`, for Ren'Py 8.5.3 to compile with Python 3.
+- Switch performance checks:
+  - videos above 30 fps, above 720p/1080p, or in HEVC/AV1;
+  - images over the 4096 texture limit;
+  - `--optimize` re-encodes videos above 30 fps at 30 fps, same size and codec family
+    (FFmpeg).
+  - The checks include the media inside standard `.rpa` archives. The index is read
+    without unpickling.
+  - Archives in other formats are reported as locked, and are not opened.
+- The loader marks games with performance issues (`!`).
 
 **Other**
 - Line-flushed logs: `logs/loader.log`, `logs/runtime.log`.
@@ -95,7 +138,7 @@ switch-bzip2 1.0.8, switch-liblzma 5.8.2.
 | `runtime/python/selftest.py` against `python312.zip` only | Linux arm64 container, host CPython 3.12.8 | CPython 3.12.8 | 0 required failures | 0 failures (66 required checks) | PASS (host only) |
 | `tests/unit/test_posixpath_horizon.py` | Linux arm64 container, host CPython 3.12.8 | patched posixpath | 22 checks | 22 pass | PASS (host only) |
 | `tests/integration/renpy_desktop/run.sh` | Linux arm64 container, Xvfb + Mesa llvmpipe 22.3.6, GLES 3.2 | **official** Ren'Py 8.5.3 SDK + our `switch_main.py`/`rsl_bridge.py`, scripted `_rslnx` | 24 checks | 24 pass; screenshots in `build-test/out/` | PASS (desktop only) |
-| `tests/unit/test_importer.py` (16 tests, part of `scripts/test.sh`) | macOS host, `/usr/bin/python3` 3.9.6 | n/a | all pass | 16/16 | PASS |
+| `tests/unit/test_importer.py` (25 tests, part of `scripts/test.sh`) | macOS host, `/usr/bin/python3` 3.9.6 | n/a | all pass | 25/25 | PASS |
 
 The desktop run found and fixed two bridge bugs before any hardware test:
 - the launcher module was named `renpy_*`, so Ren'Py tried to pickle it at startup;

@@ -51,6 +51,22 @@ def make_game(base, py=3):
     return base
 
 
+def make_rpa(path, members, protocol=5, key=0x42424242, index=None):
+    """A Ren'Py RPA-3.0 archive (renpy/loader.py's format): data, then a zlib'd pickle
+    index of {name: [(offset ^ key, length ^ key, prefix)]} at the offset in the header.
+    Ren'Py 8's archiver pickles with protocol 5 and a b"" prefix; Ren'Py 7 (Python 2) with
+    protocol 2 and a "" str, which Python 3 can only imitate with a text prefix."""
+    body = bytearray(b"RPA-3.0 %016x %08x\n" % (0, key))
+    entries = {}
+    for name, data in members.items():
+        entries[name] = [(len(body) ^ key, len(data) ^ key, b"" if protocol >= 3 else "")]
+        body += data
+    offset = len(body)
+    body += zlib.compress(pickle.dumps(entries if index is None else index, protocol))
+    body[8:24] = b"%016x" % offset
+    write(path, bytes(body))
+
+
 def listing(root):
     return sorted(os.path.relpath(os.path.join(d, n), root)
                   for d, ds, fs in os.walk(root) for n in ds + fs)
@@ -71,7 +87,7 @@ class ImporterTest(unittest.TestCase):
         return code, out.getvalue(), err.getvalue()
 
     def analyze_dir(self, base):
-        return imp.analyze(base, "directory", base)
+        return imp.analyze(base, "directory", base)[:3]
 
     def zip_of(self, entries):
         """entries: [(name, data)] or [(ZipInfo, data)]."""
@@ -170,6 +186,40 @@ class ImporterTest(unittest.TestCase):
         self.assertIn("UNSUPPORTED", stdout)
         self.assertFalse(os.path.exists(self.path("sd")))
 
+    def test_recompile_py2_game(self):
+        src = make_game(self.path("OldGame"), py=2)
+        write(os.path.join(src, "game", "cache", "bytecode.rpyb"), b"py2 cache")
+        write(os.path.join(src, "game", "tl", "french.rpyc"), rpyc(2))   # stale, no source
+        out = self.path("sd")
+        code, stdout, err = self.run_cli(src, "--out", out, "--recompile")
+        self.assertEqual(code, 0, err)
+        dest = os.path.join(out, "switch", "renpy-loader", "games", "fake-quest")
+        self.assertEqual(listing(os.path.join(dest, "game")),
+                         ["music.ogg", "options.rpy", "script.rpy"])
+        with open(os.path.join(dest, "manifest.json"), encoding="utf-8") as f:
+            m = json.load(f)
+        self.assertEqual((m["python"], m["status"], m["runtime"], m["recompile"]),
+                         ("2", "experimental", "renpy-8.5.3", True))
+        self.assertEqual((m["reasons"], m["sha256"], m["files"]["rpyc"]), ([], {}, 0))
+        text = "\n".join(m["warnings"])
+        self.assertIn("/ on integers gives a float", text)
+        self.assertIn("1 compiled translation files with no source (tl/french.rpyc)", text)
+
+    def test_recompile_refusals(self):
+        py3 = make_game(self.path("NewGame"))
+        self.assertEqual(self.run_cli(py3, "--recompile")[0], 1)
+        orphan = make_game(self.path("OldGame"), py=2)
+        write(os.path.join(orphan, "game", "secret.rpyc"), rpyc(2))
+        code, _, err = self.run_cli(orphan, "--recompile")
+        self.assertEqual(code, 1)
+        self.assertIn("1 compiled scripts have no .rpy source (secret.rpyc)", err)
+        os.remove(os.path.join(orphan, "game", "secret.rpyc"))
+        write(os.path.join(orphan, "game", "scripts.rpa"), b"RPA-3.0 ")
+        code, _, err = self.run_cli(orphan, "--recompile")
+        self.assertIn(".rpa archives", err)
+        m, _, _ = self.analyze_dir(orphan)
+        self.assertIn("try --recompile", m["reasons"][0])
+
     def test_py2_rpyc_without_engine_is_unsupported(self):
         write(self.path("g", "game", "script.rpyc"), rpyc(2))
         m, _, _ = self.analyze_dir(self.path("g"))
@@ -179,14 +229,14 @@ class ImporterTest(unittest.TestCase):
         src = make_game(self.path("FakeQuest"))
         write(os.path.join(src, "game", "python-packages", "fast.pyd"), b"MZ")
         write(os.path.join(src, "game", "images", "セーブ.png"), b"\x89PNG")
-        write(os.path.join(src, "game", "intro.wmv"), b"")
+        write(os.path.join(src, "game", "theme.mid"), b"MThd")
         m, _, _ = self.analyze_dir(src)
         self.assertEqual(m["status"], "experimental", "warnings do not block")
         text = "\n".join(m["warnings"])
         self.assertIn("native code that cannot load on the Switch: python-packages/fast.pyd", text)
         self.assertIn("python-packages present", text)
         self.assertIn("1 files with non-ASCII names", text)
-        self.assertIn(".wmv", text)
+        self.assertIn("Ren'Py cannot play MIDI: theme.mid", text)
 
     def test_id_normalisation(self):
         vectors = [
@@ -239,6 +289,114 @@ class ImporterTest(unittest.TestCase):
             self.assertEqual(f.read(), b"player save")
         self.assertEqual(sorted(os.listdir(os.path.join(root, "games"))), ["fake-quest"],
                          "no staging folder is left behind")
+
+    def test_macos_app_given_directly(self):
+        app = self.path("Fake Quest.app")
+        make_game(os.path.join(app, "Contents", "Resources", "autorun"))
+        os.remove(os.path.join(app, "Contents", "Resources", "autorun", "game", "options.rpy"))
+        for source in (app, self.tmp):   # the .app itself, and a folder holding it
+            m, gamedir, _ = self.analyze_dir(source)
+            self.assertTrue(gamedir.endswith(os.path.join("autorun", "game")), gamedir)
+            self.assertEqual((m["title"], m["id"], m["status"]), ("Fake Quest", "fake-quest", "experimental"))
+
+    def test_image_size_headers(self):
+        png = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 5000, 10)
+        jpeg = (b"\xff\xd8" + b"\xff\xe0" + struct.pack(">H", 4) + b"JF"
+                + b"\xff\xc0" + struct.pack(">HBHH", 11, 8, 720, 1280) + b"\x03")
+        webp = b"RIFF" + bytes(4) + b"WEBPVP8X" + bytes(8) + (1919).to_bytes(3, "little") + (1079).to_bytes(3, "little")
+        for name, data, want in [("a.png", png, (5000, 10)), ("b.jpg", jpeg, (1280, 720)), ("c.webp", webp, (1920, 1080))]:
+            write(self.path(name), data)
+            self.assertEqual(imp.image_size(self.path(name)), want, name)
+        write(self.path("d.png"), b"not an image")
+        self.assertIsNone(imp.image_size(self.path("d.png")))
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg not installed")
+    def test_performance_and_optimize(self):
+        src = make_game(self.path("FakeQuest"))
+        vid = os.path.join(src, "game", "video")
+        os.makedirs(vid)
+        def clip(name, size, rate, *codec):
+            subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=%s:rate=%s" % (size, rate),
+                            "-t", "1"] + list(codec) + [os.path.join(vid, name)], check=True)
+        clip("fast.webm", "1296x720", "60", "-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8")
+        clip("big.mp4", "1920x1080", "30", "-c:v", "libx264", "-preset", "ultrafast")
+        write(os.path.join(src, "game", "huge.png"),
+              b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 5000, 10))
+
+        m, _, _ = self.analyze_dir(src)
+        text = "\n".join(m["performance"]["issues"])
+        self.assertIn("1 videos above 30 fps (video/fast.webm 1296x720 vp9 60 fps)", text)
+        self.assertIn("2 videos above the 1280x720 handheld screen (video/big.mp4", text)
+        self.assertIn("1 images exceed the Switch GPU's 4096x4096 texture limit", text)
+        self.assertEqual(m["performance"]["converted"], {})
+
+        out = self.path("sd")
+        code, stdout, err = self.run_cli(src, "--out", out, "--optimize")
+        self.assertEqual(code, 0, err)
+        dest = os.path.join(out, "switch", "renpy-loader", "games", "fake-quest")
+        with open(os.path.join(dest, "manifest.json"), encoding="utf-8") as f:
+            m = json.load(f)
+        self.assertEqual(m["performance"]["converted"], {"video/fast.webm": "vp9"})
+        self.assertNotIn("above 30 fps", "\n".join(m["performance"]["issues"]))
+        self.assertIn("video/fast.webm 1296x720 vp9 30 fps (was 60)", "\n".join(m["performance"]["issues"]))
+        v = imp.probe_video(shutil.which("ffprobe"), os.path.join(dest, "game", "video", "fast.webm"))
+        self.assertEqual((v["codec"], v["width"], v["height"], round(v["fps"])), ("vp9", 1296, 720, 30))
+        self.assertIn("Switch performance: 2 issue(s)", stdout)
+
+    def test_rpa_index_plain_data(self):
+        png = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 5000, 10)
+        for protocol in (2, 5):   # Ren'Py 7 (Python 2) and Ren'Py 8 archives
+            rpa = self.path("p%d.rpa" % protocol)
+            make_rpa(rpa, {"images/huge.png": png, "script.rpyc": b"x" * 10}, protocol)
+            index = imp.rpa_index(rpa)
+            self.assertEqual(sorted(index), ["images/huge.png", "script.rpyc"])
+            member = ("p%d.rpa" % protocol,) + index["images/huge.png"]
+            self.assertEqual(imp.read_member(self.tmp, member), png)
+        write(self.path("custom.rpa"), b"MYGAME-1 encrypted")
+        self.assertIsNone(imp.rpa_index(self.path("custom.rpa")))
+
+    def test_rpa_index_that_would_run_code_is_refused(self):
+        marker = self.path("pwned")
+
+        class Evil:
+            def __reduce__(self):
+                return (open, (marker, "w"))
+
+        rpa = self.path("evil.rpa")
+        make_rpa(rpa, {}, index={"a.png": [(0, 0, b"")], "b": Evil()})
+        with self.assertRaises(ValueError):
+            imp.rpa_index(rpa)
+        self.assertFalse(os.path.exists(marker), "the index must never be unpickled")
+
+    def test_archives_in_report(self):
+        src = make_game(self.path("FakeQuest"))
+        png = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 5000, 10)
+        make_rpa(os.path.join(src, "game", "images.rpa"), {"images/huge.png": png})
+        write(os.path.join(src, "game", "locked.rpa"), b"XYZ-9.0 custom")
+        m, _, _ = self.analyze_dir(src)
+        cov = m["performance"]["coverage"]
+        self.assertEqual((cov["archived_media"], cov["locked_archives"]), (1, ["locked.rpa (custom format)"]))
+        text = "\n".join(m["performance"]["issues"])
+        self.assertIn("images/huge.png (in images.rpa) 5000x10", text)
+        self.assertIn("1 archives could not be checked (locked.rpa (custom format))", text)
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg not installed")
+    def test_optimize_video_inside_archive(self):
+        src = make_game(self.path("FakeQuest"))
+        clip = self.path("fast.webm")
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=60", "-t", "1",
+                        "-c:v", "libvpx-vp9", "-deadline", "realtime", clip], check=True)
+        with open(clip, "rb") as f:
+            rpa = os.path.join(src, "game", "media.rpa")
+            make_rpa(rpa, {"video/fast.webm": f.read()})
+        out = self.path("sd")
+        code, stdout, err = self.run_cli(src, "--out", out, "--optimize")
+        self.assertEqual(code, 0, err)
+        game = os.path.join(out, "switch", "renpy-loader", "games", "fake-quest", "game")
+        v = imp.probe_video(shutil.which("ffprobe"), os.path.join(game, "video", "fast.webm"))
+        self.assertEqual((v["width"], v["height"], round(v["fps"])), (160, 90, 30))
+        self.assertEqual(imp.sha256(os.path.join(game, "media.rpa")), imp.sha256(rpa), "archive unchanged")
+        self.assertIn("1 of them come from archives", stdout)
 
     def test_bad_id_rejected(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):

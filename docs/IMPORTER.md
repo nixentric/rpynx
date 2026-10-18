@@ -23,6 +23,8 @@ python3 importer/rsl_import.py SOURCE --out /Volumes/SD  # report + export
 | `--out DIR` | Export to `DIR/switch/renpy-loader/games/<id>/` (`game/` + `manifest.json`). |
 | `--id ID` | Choose the folder name yourself. It must already be in normalised form (see below). |
 | `--replace` | Update an existing export. Without it, the importer refuses if `games/<id>` exists. |
+| `--optimize` | Re-encode videos above 30 fps at 30 fps, at the same size and constant quality. Needs FFmpeg. See "Switch performance". |
+| `--recompile` | Ren'Py 7 / Python 2 games only. Exports without `.rpyc`, so Ren'Py 8.5.3 compiles the `.rpy` sources with Python 3 (see below). |
 
 Exit status: `0` OK; `1` refused (unsafe archive, not a Ren'Py game, unsupported game,
 or the export already exists); `2` bad arguments.
@@ -82,7 +84,7 @@ with the same id, use `--id` for the second one.
 | Custom Python | `game/python-packages/`, `*.py` in `game/` (not `*_ren.py`) | Warning: pure Python 3.12 only; no `ctypes`, `ssl`, `sqlite3`, `mmap`, `subprocess` or `multiprocessing` on the Switch |
 | Native code | `*.pyd`, `*.dll`, `*.so`, `*.dylib` in `game/` | Warning: cannot load on the Switch |
 | Archive format | `.rpa` header is `RPA-3.0` or `RPA-2.0` | Other header → warning: a custom format that needs the game's own loader |
-| Media | Counts audio and video by extension. `.ogg .opus .mp3 .wav .flac .webm .ogv .mkv` are expected to work. `.mp4 .m4v .m4a .aac .avi .wmv .wma .mpg .mpeg .mov .flv .mp2 .mid .midi` are not. | Warning for the second group. Files ≥ 2 GiB → warning (FAT32 cannot hold files ≥ 4 GiB) |
+| Media | Counts audio and video files by extension. The runtime's FFmpeg decodes practically every format (WebM/VP9, MP4/H.264, HEVC, AV1, AVI, WMV, MPEG and others); only MIDI is refused, because Ren'Py cannot play it. | Warning for `.mid`. Files ≥ 2 GiB → warning (FAT32 cannot hold files ≥ 4 GiB). Decoding cost: see "Switch performance" |
 | Non-ASCII names | Any exported path with non-ASCII characters | Warning: creating such names on `sdmc:` failed in hardware run 4 |
 
 ## Status
@@ -93,6 +95,7 @@ with the same id, use `--id` for the second one.
 | Ren'Py 8.0–8.4 | `experimental`, plus a warning (8.5.3 loading older `.rpyc` is untested) | `renpy-8.5.3` |
 | Version unknown, Python 3 `.rpyc` | `experimental`, plus a warning | `renpy-8.5.3` |
 | Ren'Py ≤ 7.x, or Python 2 | `unsupported` (no Python 2 runtime yet) | `null` |
+| Ren'Py ≤ 7.x with `--recompile` | `experimental`, plus warnings | `renpy-8.5.3` |
 | Ren'Py 9+, or nothing identifiable | `unsupported` | `null` |
 
 The importer never writes `verified`. Only a hardware test can do that (`docs/HARDWARE_TESTS.md`).
@@ -110,13 +113,88 @@ It does not export `unsupported` games, because no runtime could start them.
   "reasons": [], "warnings": ["..."],
   "files": {"count": 172, "total_bytes": 10637851, "rpa": 0, "rpy": 52, "rpyc": 52, "rpym": 1},
   "media": {".opus": 1},
+  "recompile": false,
+  "performance": {"issues": ["..."], "converted": {"gui/splash.webm": "vp9"},
+                  "coverage": {"loose_media": 3190, "archived_media": 0, "locked_archives": []}},
   "sha256": {"script.rpyc": "…"}
 }
 ```
 
 - `reasons` explains why a game is `unsupported`.
 - `sha256` lists every `.rpa` and `.rpyc`, by path relative to `game/`.
-- The loader does not read the manifest yet; it still uses the folder name.
+- `recompile` is `true` for a `--recompile` export.
+- The loader reads `status`, `runtime`, `renpy_version`, `recompile` and `reasons[0]`:
+  - its Game Library shows each game's Ren'Py version, status, runtime, and whether that
+    runtime is installed;
+  - Launch starts `runtimes/<runtime>.nro`. `renpy-8.5.3` falls back to
+    `runtimes/renpy-runtime.nro`;
+  - it refuses `unsupported` games, and games whose runtime is missing, with the reason;
+  - a game without a manifest (copied by hand) uses the default runtime.
+
+## Switch performance
+
+The Switch decodes video in software, on a ~1 GHz Cortex-A57. Its screen is 1280×720 in
+handheld mode and 1920×1080 docked, and its GPU's largest texture is 4096×4096. The
+importer flags what loads the console. The findings go into `performance.issues` in the
+manifest, and the loader marks such games with `!` and shows the reasons.
+
+Checks (videos need `ffprobe`; images are read from their headers). They cover loose files
+**and** the contents of standard `.rpa` archives:
+- RPA-3.0 and RPA-2.0, Ren'Py's own formats, read as `renpy/loader.py` reads them;
+- the index (a pickle) is interpreted opcode by opcode with `pickletools`. Only plain data
+  (dicts, lists, tuples, strings, bytes, ints) is accepted, and an index that would import or
+  call anything is refused. Nothing is unpickled or executed.
+
+Archives in any other format count as **locked**. Their contents are not checked, and the
+importer does not try to open them: no decryption, no format cracking. The report lists
+them, and the loader shows them as an issue. The `Checked:` line in the report (and
+`performance.coverage` in the manifest) gives:
+- the number of loose and archived images/videos checked;
+- the locked archives.
+
+| Finding | Why it matters | Fixed by `--optimize` |
+|---|---|---|
+| Video above 30 fps | Every extra frame costs CPU and heat; the screen gains little | Yes: re-encoded at 30 fps, same size. From an archive, the result is exported as a loose file; Ren'Py loads files on disk before archives, and the archive is copied unchanged |
+| Video above 1920×1080 | Too heavy to decode smoothly | No (see below) |
+| Video above 1280×720 | About twice the decoding work of 720p | No (see below) |
+| HEVC or AV1 video | The most expensive codecs to decode in software | No |
+| Image above 4096 pixels on a side | Over the GPU texture limit; may not display | No |
+| Locked archive | Its assets cannot be checked | No |
+
+How `--optimize` re-encodes (FFmpeg on the desktop; the Switch only plays the result):
+- It keeps the codec family, because the game refers to the file by name. VP9 → libvpx-vp9
+  at CRF 31 with tiles (`-tile-columns 2`), so the Switch can decode on several cores. VP8 →
+  libvpx. H.264 → libx264 at CRF 20, profile high.
+- Constant quality (CRF), not a fixed bitrate, so the picture stays sharp. Audio is copied
+  unchanged.
+- It skips videos with an alpha channel, and codecs it has no encoder for, and reports them.
+- It changes only the export. The source is never touched.
+
+Why sizes are not shrunk automatically: Ren'Py draws a `Movie` without `size=`, and any
+image, at the file's own pixel size. Halving a 1080p splash to 720p would show it at two
+thirds of the screen. Shrinking needs a per-game check, so the importer only reports it.
+
+## Recompile mode (`--recompile`)
+
+For Ren'Py 7.x games (Python 2) that ship their `.rpy` sources. The export leaves out every
+`.rpyc`/`.rpymc` (Python 2 pickles that Ren'Py 8 cannot load) and `game/cache/`. Ren'Py 8.5.3
+then compiles the sources with Python 3 on the first launch, which is slow once. The source
+folder is not changed.
+
+The importer refuses recompile mode when:
+- the game is not Python 2;
+- it has `.rpa` archives, which may hold compiled scripts;
+- a `.rpyc` outside `tl/` has no `.rpy` source.
+
+Sourceless `.rpyc` under `tl/` are left out with a warning: those translations may be missing.
+
+It is an experiment, not support:
+- Python 2 code can behave differently under Python 3 **without any error**. For example,
+  Ren'Py 7 scripts use Python 2 division unless they declare `rpy python 3`, so `7 / 2` is `3`
+  there and `3.5` here. Check the game's logic.
+- Saves from the original game do not load.
+- Proper support for Ren'Py 7 is a separate Python 2.7 runtime (`docs/COMPATIBILITY.md`,
+  phase 3).
 
 ## Archive safety
 
@@ -144,8 +222,11 @@ The limits are constants at the top of `rsl_import.py`.
 - `.7z`/`.rar` depend on the installed `7z`. If 7z cannot open a RAR, the importer says so;
   unpack it with another tool and import the folder.
 - The 7z size limits trust 7z's listing. A lying header is caught only after extraction.
-- Scripts inside `.rpa` are not inspected. A game that ships only `.rpa` and no `renpy/` folder
-  may have an unknown Python generation, which makes it `unsupported`.
+- Scripts inside `.rpa` are not inspected; only images and videos are. A game that ships
+  only `.rpa` and no `renpy/` folder may have an unknown Python generation, which makes it
+  `unsupported`.
+- `--recompile` needs `.rpy` sources. Ren'Py 7 games that ship only `.rpyc` are refused (a
+  decompiler such as rpycdec could be added as an optional step).
 - The Python modules in `game/` are not scanned for imports of modules the Switch lacks.
 - The media check only looks at file extensions. The runtime's FFmpeg codec list is not
   confirmed on hardware.

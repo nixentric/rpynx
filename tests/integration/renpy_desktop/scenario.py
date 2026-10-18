@@ -103,6 +103,10 @@ def steps():
     yield from until("rollback (L) returns to the previous line", lambda: line() == first)
     _rslnx.tap("rollforward")
     yield from until("roll forward (R) returns to the later line", lambda: line() == second)
+    _rslnx.tap("back")
+    yield from until("back (B) in the game rolls back, like L", lambda: line() == first)
+    _rslnx.tap("rollforward")
+    yield from until("roll forward (R) after B", lambda: line() == second)
 
     _rslnx.tap("hide_ui")
     yield from until("hide UI (X) hides the dialogue window", lambda: renpy.store._windows_hidden)

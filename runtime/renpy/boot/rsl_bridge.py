@@ -24,6 +24,7 @@ import renpy
 import renpy.display.controller
 import renpy.pygame as pygame
 import renpy.pygame.event
+import renpy.pygame.key
 
 import _rslnx
 
@@ -106,8 +107,12 @@ def _setup_display():
         if config.mouse and config.mouse.get("default"):
             image, hx, hy = config.mouse["default"][0][:3]
         else:
-            hx = hy = 0
+            hx, hy = 4, 3   # the arrow's tip: HOTSPOT in runtime/renpy/make_cursor.py
         config.mouse_displayable = renpy.store.MouseDisplayable(image, hx, hy)
+
+    # No cursor until the stick moves it (it sat in a corner, hardware run 15).
+    if renpy.display.interface is not None:
+        renpy.display.interface.hide_mouse()
 
 
 def _post_mouse_button(down):
@@ -131,10 +136,24 @@ def step():
         if kind == EMERGENCY:
             renpy.exports.notify("Controls reset to default (+ and − held for 3 s).")
         elif action in PAD:
+            if kind == DOWN:
+                interface.hide_mouse()   # buttons and D-pad: no cursor until the stick moves
+                if action == "confirm":
+                    # ponytail: temporary diagnostic for run 17 (A did not pick a card on the
+                    # console); remove once that is understood.
+                    f = renpy.display.focus.get_focused()
+                    print("rsl: A pressed, focused %s %r, screens %s" % (
+                        type(f).__name__ if f is not None else None, getattr(f, "action", None),
+                        _shown_screens()), flush=True)
+                if _text_field_press(action):
+                    continue
+            # B goes back in-game, like the games' own "Back" (Rollback) buttons;
+            # in menus it still closes the menu (Ren'Py binds pad B to game_menu).
+            pad = PAD["rollback"] if action == "back" and not renpy.store._menu else PAD[action]
             if kind == UP:
-                renpy.display.controller.post_event(PAD[action], "release", False)
+                renpy.display.controller.post_event(pad, "release", False)
             else:
-                renpy.display.controller.post_event(PAD[action], "press", kind == REPEAT)
+                renpy.display.controller.post_event(pad, "press", kind == REPEAT)
         elif action == "skip":
             if kind != REPEAT:
                 renpy.exports.queue_event("skip", up=(kind == UP))
@@ -146,7 +165,76 @@ def step():
 
     if moved and renpy.display.draw is not None:
         renpy.display.draw.set_mouse_pos(cx * renpy.config.screen_width, cy * renpy.config.screen_height)
+    _focus_first_button(moved)
+    if _kbd_pending:
+        _open_keyboard()
     return bool(events) or bool(moved)
+
+
+_auto_focused = None   # the screen set whose first button was already selected
+NOT_CONTENT = {"say", "nvl", "notify", "skip_indicator", "quick_menu", "_performance", "_trace_screen"}
+
+
+def _screens():
+    layers = renpy.display.scenelists.scene_lists().layers
+    return [e.displayable for entries in layers.values() for e in entries
+            if isinstance(e.displayable, renpy.display.screen.ScreenDisplayable)]
+
+
+def _shown_screens():
+    return tuple(sorted(str(sd.tag) for sd in _screens()))
+
+
+def _content_buttons():
+    """ids of the buttons on the screens the player is meant to act on: a choice
+    menu's options, or the screens that are not overlays (config.overlay_screens,
+    such as the quick menu) nor dialogue. None while dialogue is up without a
+    choice: A must advance it."""
+    screens = _screens()
+    names = {sd.screen_name[0] for sd in screens}
+    if "choice" in names:
+        content = [sd for sd in screens if sd.screen_name[0] == "choice"]
+    elif names & {"say", "nvl"}:
+        return None
+    else:
+        skip = NOT_CONTENT | set(renpy.config.overlay_screens)
+        content = [sd for sd in screens if sd.screen_name[0] not in skip and sd.tag not in skip]
+    Button = renpy.display.behavior.Button
+    ids = set()
+    for sd in content:
+        sd.visit_all(lambda d: ids.add(id(d)) if isinstance(d, Button) else None)
+    return ids
+
+
+def _focus_first_button(moved):
+    """When a new set of screens appears and no button is selected, select the
+    first button of the screen the player acts on, so the D-pad and A work at
+    once in every game (runs 14-18): New Game, the first choice, the first card.
+    Never a quick menu or other overlay button: Forbidden Fantasy's always-on
+    debug_screen made its quick menu's Back look like content, and A went back
+    instead of advancing (run 18). Not while a text field is active (the first
+    button may be "Use default name") or the virtual cursor is in use."""
+    global _auto_focused
+    shown = _shown_screens()
+    if moved:
+        _auto_focused = shown
+    focus = renpy.display.focus
+    if shown == _auto_focused or not focus.focus_list:
+        return
+    if isinstance(focus.get_focused(), renpy.display.behavior.Button):
+        _auto_focused = shown
+        return
+    if _active_input() is not None:
+        return
+    ids = _content_buttons()
+    if not ids:
+        return
+    for f in focus.focus_list:
+        if id(f.widget) in ids and f.x is not None and f.widget.style.keyboard_focus:
+            _auto_focused = shown
+            focus.pending_focus_type = "keyboard"
+            focus.change_focus(f)
+            return
 
 
 def poll():
@@ -174,7 +262,141 @@ def wait():
         _rslnx.wait_event(ACTIVE_MS if now - _last_activity < IDLE_AFTER else IDLE_MS)
 
 
+def _old_language_change():
+    """True for games made with Ren'Py 7.5.3/8.0.3 or older (script_version.txt)."""
+    v = renpy.config.script_version
+    return bool(v) and (v <= (7, 5, 3) or (v[0] == 8 and v <= (8, 0, 3)))
+
+
+def _install_language_compat():
+    """Ren'Py 8.5.3 re-runs every `define gui.*` when the language changes;
+    7.5.3/8.0.3 did that only in gui.rebuild(). A 7.x game that sets gui values
+    in `init python` lost them (Forbidden Fantasy: button text size back to 0,
+    every button label invisible, hardware run 13). For such games, skip that
+    redefine unless gui.rebuild() asks for it (rebuild=True)."""
+    import renpy.ast
+    import renpy.exports
+    import renpy.translation
+
+    redefine, change_language = renpy.ast.redefine, renpy.translation.change_language
+    skip = []
+
+    def compat_redefine(stores):
+        if not (skip and skip[-1] and stores == ["store.gui"]):
+            redefine(stores)
+
+    def compat_change_language(language, force=False, rebuild=False):
+        skip.append(not rebuild and _old_language_change())
+        try:
+            return change_language(language, force=force, rebuild=rebuild)
+        finally:
+            skip.pop()
+
+    renpy.ast.redefine = compat_redefine
+    renpy.translation.change_language = compat_change_language
+    renpy.exports.change_language = compat_change_language
+
+
+# The text field last drawn as editable (Ren'Py keeps no reference to it; an
+# Input without a value, such as renpy.input()'s, is not in behavior.inputs).
+_last_input = None
+_kbd_pending = False      # a text field appeared: open the keyboard for it
+_kbd_closed_at = -1.0     # when the keyboard last closed (time.monotonic)
+
+
+def _active_input():
+    i = _last_input and _last_input()
+    if i is None or not i.editable or renpy.display.interface.text_rect is None:
+        return None
+    return i
+
+
+def _finishes_on_enter(i):
+    return i.action is not None or (i.value is None and not i.changed) or getattr(i.value, "returnable", False)
+
+
+def _open_keyboard():
+    """The full Switch keyboard for the active text field: its own text box shows
+    what is typed, starting from the field's text. OK puts the text into the
+    field, Cancel leaves it; neither moves on, the player does (run 16)."""
+    global _kbd_pending, _kbd_closed_at
+    _kbd_pending = False
+    i = _active_input()
+    if i is None:
+        return
+    text = _rslnx.keyboard(i.content, "", i.length or 0)
+    _kbd_closed_at = time.monotonic()
+    if text is not None:
+        i.caret_pos = len(text)
+        i.update_text(text, True)
+
+
+def _text_field_press(action):
+    """Called on a button press; True if a text field took it.
+    - Right after the keyboard closes, the press that closed it is dropped.
+    - Y, or A with no button selected, opens the keyboard again.
+    - A on a screen with no buttons at all presses Enter, because A cannot
+      submit a Ren'Py input (input_enter is K_RETURN only)."""
+    if action not in ("confirm", "back", "hide_ui") or _active_input() is None:
+        return False
+    if time.monotonic() - _kbd_closed_at < 0.5:
+        return True
+    focus = renpy.display.focus
+    if action == "back" or (action == "confirm" and focus.get_focused() is not None):
+        return False
+    buttons = [f for f in focus.focus_list if f.x is not None and f.widget.style.keyboard_focus]
+    if action == "confirm" and not buttons and _finishes_on_enter(_active_input()):
+        for kind in (pygame.KEYDOWN, pygame.KEYUP):
+            pygame.event.post(pygame.event.Event(kind, key=pygame.K_RETURN, mod=0, scancode=40,
+                                                 unicode="\r", repeat=False))
+    else:
+        _open_keyboard()
+    return True
+
+
+def _install_text_input():
+    """Ren'Py 8.5.3 starts a screen keyboard again on every redraw while SDL
+    reports one as supported but not shown. That suits Android; on the Switch
+    SDL's inline keyboard reappeared as soon as it closed (run 14), and it has
+    no text box (run 16). Ren'Py's start_text_input now only asks for the full
+    keyboard once per field; SDL's inline one is never shown."""
+    import weakref
+
+    key = renpy.pygame.key
+    key.has_screen_keyboard_support = lambda: False
+
+    def start_text_input():
+        global _kbd_pending
+        _kbd_pending = True
+
+    key.start_text_input = start_text_input
+    key.stop_text_input = lambda: None
+
+    Input = renpy.display.behavior.Input
+    render = Input.render
+
+    def input_render(self, *args, **kwargs):
+        global _last_input
+        if self.editable:
+            _last_input = weakref.ref(self)
+        return render(self, *args, **kwargs)
+
+    Input.render = input_render
+
+
 def install():
     renpy.display.controller.init = _setup_display
     renpy.pygame.event.poll = poll
     renpy.pygame.event.wait = wait
+
+    # renpy.ast/exports cannot be imported before renpy.import_all() (no
+    # renpy.object yet). post_import() runs after import_all() and again after
+    # every reload_all(), which restores the modules from a backup.
+    post_import = renpy.post_import
+
+    def post_import_with_compat():
+        post_import()
+        _install_language_compat()
+        _install_text_input()
+
+    renpy.post_import = post_import_with_compat

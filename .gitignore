@@ -11,3 +11,4 @@ build-renpy/
 build-test/
 core
 core.*
+graphify-out/

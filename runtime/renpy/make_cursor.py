@@ -1,11 +1,24 @@
-"""Write the virtual-cursor image (white arrow, dark outline) as a PNG using
-only the standard library. usage: make_cursor.py <out.png> [scale]"""
+"""Write the virtual-cursor image as a PNG using only the standard library: a black
+arrow with a white outline and rounded corners (in the style of Bibata Modern
+Classic; drawn here, no Bibata files used), anti-aliased.
+usage: make_cursor.py <out.png> [scale]
+
+The shape is a thin "core" arrow grown by BODY (black) and then OUTLINE (white),
+measured as the distance to the core, so every corner is rounded and the outline
+has the same width everywhere. HOTSPOT (pixels at scale 2, the size the runtime
+uses) is the tip of the black body, where the eye reads the point on any
+background; rsl_bridge.py passes the same numbers to Ren'Py."""
+import math
 import struct
 import sys
 import zlib
 
-# Arrow outline in a 12 x 19 design grid; hotspot at (0, 0).
-ARROW = [(0, 0), (0, 16), (4, 12), (7, 18.5), (9.5, 17.5), (6.8, 11.5), (11.5, 11.5)]
+# Core arrow in design units (1 unit = `scale` pixels); tip at (0, 0).
+CORE = [(0, 0), (0, 14.5), (3.6, 11.2), (6.0, 16.6), (8.2, 15.7), (5.9, 10.6), (10.6, 10.6)]
+BODY, OUTLINE = 1.0, 1.0           # design units
+BLACK, WHITE = (24, 24, 24), (255, 255, 255)
+SAMPLES = 4                        # per pixel and axis, for anti-aliasing
+HOTSPOT = (4, 3)                   # pixels at scale 2; keep in step with rsl_bridge.py
 
 
 def inside(px, py, poly):
@@ -16,20 +29,41 @@ def inside(px, py, poly):
     return hit
 
 
+def distance(px, py, poly):
+    """Signed distance from (px, py) to the polygon's edge: negative inside."""
+    best = float("inf")
+    for (ax, ay), (bx, by) in zip(poly, poly[1:] + poly[:1]):
+        dx, dy = bx - ax, by - ay
+        t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+        best = min(best, math.hypot(px - ax - t * dx, py - ay - t * dy))
+    return -best if inside(px, py, poly) else best
+
+
 def render(scale):
-    w, h = int(13 * scale), int(20 * scale)
-    poly = [(x * scale + 1, y * scale + 1) for x, y in ARROW]
-    fill = [[inside(x + 0.5, y + 0.5, poly) for x in range(w)] for y in range(h)]
+    grow = BODY + OUTLINE
+    off = grow * scale + 1
+    w = int(math.ceil((max(x for x, _ in CORE) + grow) * scale + off)) + 1
+    h = int(math.ceil((max(y for _, y in CORE) + grow) * scale + off)) + 1
+    core = [(x * scale + off, y * scale + off) for x, y in CORE]
+    body, edge = BODY * scale, grow * scale
     rows = []
     for y in range(h):
         row = bytearray([0])  # PNG filter: none
         for x in range(w):
-            if fill[y][x]:
-                edge = any(not (0 <= x + dx < w and 0 <= y + dy < h and fill[y + dy][x + dx])
-                           for dx in (-1, 0, 1) for dy in (-1, 0, 1))
-                row += bytes((20, 20, 20, 255) if edge else (255, 255, 255, 255))
-            else:
+            black = white = 0
+            for sy in range(SAMPLES):
+                for sx in range(SAMPLES):
+                    d = distance(x + (sx + 0.5) / SAMPLES, y + (sy + 0.5) / SAMPLES, core)
+                    if d <= body:
+                        black += 1
+                    elif d <= edge:
+                        white += 1
+            n = black + white
+            if n == 0:
                 row += bytes((0, 0, 0, 0))
+                continue
+            rgb = [round((black * b + white * c) / n) for b, c in zip(BLACK, WHITE)]
+            row += bytes(rgb + [round(255 * n / SAMPLES ** 2)])
         rows.append(bytes(row))
     return w, h, b"".join(rows)
 

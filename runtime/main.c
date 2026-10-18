@@ -156,12 +156,46 @@ static PyObject *nx_wait_event(PyObject *self, PyObject *arg)
     Py_RETURN_NONE;
 }
 
+/* The full Switch keyboard, a library applet with its own text box so the
+ * player sees what they type, started from `initial`. SDL's inline keyboard
+ * has no text box and sends nothing until Submit (hardware run 16). Blocks
+ * with the GIL released; returns the text, or None if cancelled. */
+static PyObject *nx_keyboard(PyObject *self, PyObject *args)
+{
+    const char *initial, *guide;
+    int maxlen;
+    if (!PyArg_ParseTuple(args, "ssi", &initial, &guide, &maxlen))
+        return NULL;
+    char out[1024] = { 0 };
+    SwkbdConfig kbd;
+    Result rc;
+    Py_BEGIN_ALLOW_THREADS
+    rc = swkbdCreate(&kbd, 0);
+    if (R_SUCCEEDED(rc)) {
+        swkbdConfigMakePresetDefault(&kbd);
+        swkbdConfigSetInitialText(&kbd, initial);
+        swkbdConfigSetInitialCursorPos(&kbd, 1);   /* end of the text */
+        if (guide[0])
+            swkbdConfigSetGuideText(&kbd, guide);
+        if (maxlen > 0)
+            swkbdConfigSetStringLenMax(&kbd, (u32)maxlen);
+        rc = swkbdShow(&kbd, out, sizeof out);
+        swkbdClose(&kbd);
+    }
+    Py_END_ALLOW_THREADS
+    rsl_log("keyboard: %s (0x%x)", R_SUCCEEDED(rc) ? "OK" : "cancelled or failed", (unsigned)rc);
+    if (R_FAILED(rc))
+        Py_RETURN_NONE;
+    return PyUnicode_DecodeUTF8(out, (Py_ssize_t)strlen(out), "replace");
+}
+
 static PyMethodDef nx_methods[] = {
     { "memory", nx_memory, METH_NOARGS, "(used, total) process memory in bytes" },
     { "applet_type", nx_applet_type, METH_NOARGS, "libnx AppletType (0 = application)" },
     { "input_poll", nx_input_poll, METH_NOARGS, "read controllers: (events, cursor_x, cursor_y, moved)" },
     { "cursor_visible", nx_cursor_visible, METH_NOARGS, "virtual cursor enabled in the mapping" },
     { "wait_event", nx_wait_event, METH_O, "wait up to ms for an SDL event (GIL released)" },
+    { "keyboard", nx_keyboard, METH_VARARGS, "keyboard(initial, guide, maxlen): typed text or None" },
     { NULL, NULL, 0, NULL },
 };
 
@@ -616,10 +650,13 @@ static int run_game(struct job *job, const char *game, const char *savedir_arg, 
     setenv("RENPY_DISABLE_BACKUPS", "I take responsibility for this.", 1);
     setenv("RENPY_RENDERER", "gles2", 1);
     /* Opt-in 30 fps cap (swap every 2nd vblank; Ren'Py's own switch) to
-     * compare heat. ponytail: flag file until the loader has a runtime
-     * settings screen (Milestone 7). */
+     * reduce heat: config/power-saver for every game, or a power-saver file
+     * in one game's folder. ponytail: flag files until the loader has a
+     * runtime settings screen (Milestone 7). */
     struct stat fst;
-    if (stat(ROOT "/config/power-saver", &fst) == 0) {
+    char flag[600];
+    snprintf(flag, sizeof flag, "%s/power-saver", basedir);
+    if (stat(ROOT "/config/power-saver", &fst) == 0 || stat(flag, &fst) == 0) {
         setenv("RENPY_GL_VSYNC", "2", 1);
         rsl_log("power saver: 30 fps cap");
     }

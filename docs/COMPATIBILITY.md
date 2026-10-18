@@ -9,7 +9,7 @@ but tests are incomplete or issues are known. **Unsupported** = cannot run relia
 |---|---|---|---|
 | 8.5.x | 3.12 | **Experimental** | Ren'Py 8.5.3 runs on the Switch (GLES 3.2 on nouveau); first game launched 2026-10-18 |
 | 8.0–8.4 | 3.9 / 3.12 | **Experimental** | Untested on hardware. The importer accepts them with a warning; Phase 2: test whether 8.5.3 loads their `.rpyc` |
-| 7.x | 2.7 | Unsupported | Phase 3: separate Python 2.7 runtime, if feasible |
+| 7.x | 2.7 | Unsupported | Phase 3: separate Python 2.7 runtime, if feasible. Experiment: the importer's `--recompile` exports a game with `.rpy` sources for Ren'Py 8.5.3 (experimental; Python 3 semantics) |
 | ≤ 6.x | 2.x | Unsupported | Not planned |
 
 ## Games
@@ -34,4 +34,4 @@ No game has been tested. Rows are added only with a test record from `docs/HARDW
 | Game launch from the library, per-game saves and logs | Implemented, **hardware unverified** |
 | Live2D, 3D models (GLTFModel) | Unsupported (no Switch libraries) |
 | In-game loader overlay | Not implemented (Milestone 6); the button shows a notice |
-| Importer (`importer/rsl_import.py`, macOS) | Implemented, host-tested (16 tests); its export of The Question launched on hardware (run 9). See `docs/IMPORTER.md` |
+| Importer (`importer/rsl_import.py`, macOS) | Implemented, host-tested (25 tests); its export of The Question launched on hardware (run 9). See `docs/IMPORTER.md` |
