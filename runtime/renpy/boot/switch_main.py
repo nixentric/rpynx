@@ -13,23 +13,31 @@ import os
 import sys
 
 BASE = os.path.dirname(os.path.abspath(__file__))
+LOGDIR = os.environ.get("RSL_LOGDIR")
+
+# Not named renpy*: Ren'Py pickles the state of every renpy* module for
+# restarts, and this one holds plain functions.
+LAUNCHER = "rsl_renpy_launcher"
 
 
 def load_renpy_launcher():
-    spec = importlib.util.spec_from_file_location("renpy_main", os.path.join(BASE, "renpy.py"))
+    spec = importlib.util.spec_from_file_location(LAUNCHER, os.path.join(BASE, "renpy.py"))
     module = importlib.util.module_from_spec(spec)
-    sys.modules["renpy_main"] = module
+    sys.modules[LAUNCHER] = module
     spec.loader.exec_module(module)
     return module
+
+
+def path_to_logdir(basedir):
+    return LOGDIR
 
 
 def main():
     launcher = load_renpy_launcher()
 
-    logdir = os.environ.get("RSL_LOGDIR")
-    if logdir:
-        os.makedirs(logdir, exist_ok=True)
-        launcher.path_to_logdir = lambda basedir: logdir
+    if LOGDIR:
+        os.makedirs(LOGDIR, exist_ok=True)
+        launcher.path_to_logdir = path_to_logdir
 
     import rsl_bridge
     rsl_bridge.install()

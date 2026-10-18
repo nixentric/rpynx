@@ -12,7 +12,7 @@ Controller mapping engine  rsl_input_update()  bindings, deadzone, repeat/hold, 
         ▼
 Logical actions (confirm, back, rollback, skip, ...)
         ▼
-Consumer: the loader UI today; the Ren'Py event bridge from Milestone 4
+Consumers: the loader UI, and the Ren'Py bridge (runtime/renpy/boot/rsl_bridge.py)
 ```
 
 The mapping engine (`platform/input/input.c`, `input_config.c`) and the filesystem helpers
@@ -34,6 +34,9 @@ the normaliser relies on is checked against libnx's own constants by `_Static_as
 
 | `runtime/main.c` | Runtime `.nro`: embeds CPython, runs a script (later: a Ren'Py game) |
 | `runtime/python/` | Static CPython 3.12.8 cross build: patches, `config.site`, stdlib packer, self-test ([README](../runtime/python/README.md)) |
+| `runtime/renpy/` | Ren'Py 8.5.3 static build, engine staging, boot script and controller bridge ([README](../runtime/renpy/README.md)) |
+| `runtime/compatibility/` | Replacement engine modules for features the Switch cannot support (assimp) |
+| `tests/integration/renpy_desktop/` | Desktop test: official Ren'Py SDK + our boot/bridge, scripted controller input |
 | `docker/Dockerfile` | Pinned devkitA64 image plus host headers needed to build the host CPython |
 
 ## Process model

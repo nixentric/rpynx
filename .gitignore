@@ -8,3 +8,4 @@ build-python/
 build-runtime/
 build-runtime-romfs/
 build-renpy/
+build-test/

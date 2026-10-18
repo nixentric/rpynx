@@ -55,5 +55,28 @@ Setup: copy `dist/renpy-runtime.nro` to `sdmc:/switch/renpy-loader/runtimes/renp
 
 Record the full report text and both memory figures; they set the memory budget for Milestone 4.
 
-Milestone 4 and later add the gameplay tests from the project brief (new game, dialogue,
+## Milestone 4 tests (Ren'Py engine)
+
+Setup:
+- Install the Milestone 3 files, using the new `renpy-runtime.nro`.
+- Copy the `the_question` folder from the official Ren'Py 8.5.3 SDK (renpy.org) to
+  `sdmc:/switch/renpy-loader/games/the_question/`.
+- Start the loader via title override (application mode) unless the test says otherwise.
+
+| # | Test | Steps | Expected |
+|---|---|---|---|
+| H26 | Cold launch | Library → the_question → A | Ren'Py main menu within ~30 s. `logs/the_question/log.txt` shows "Initializing gles2 renderer" and the GPU vendor |
+| H27 | Dialogue and choices | Start, advance with A, reach the first menu, pick with D-pad + A | Text renders correctly; the choice is taken |
+| H28 | Controls | Try L, R, X, Y, B, +, −, ZL, hold ZR | Rollback, roll forward, hide UI, history, back, game menu, quick menu, auto-forward, skip while held |
+| H29 | Virtual cursor and touch | Move the right stick, press it on a button; tap a button on the touchscreen | Arrow cursor moves smoothly and clicks; touch works |
+| H30 | Audio | Listen through the opening | Music and sound play, without stutter |
+| H31 | Save / reload | Save in slot 1, quit to the library, relaunch, load slot 1 | Same scene restored; the save is in `saves/the_question/` |
+| H32 | HOME and sleep | Press HOME mid-dialogue, return; sleep for more than 1 minute, wake | Game resumes; audio and picture back; no stuck skip; no dialogue skipped |
+| H33 | Return to library | Main menu → Quit | The loader comes back |
+| H34 | Applet mode | Repeat H26 with the loader started from the album | Record: runs, or the error and memory figure |
+| H35 | Emergency combo | Hold + and − for 3 s in game | "Controls reset to default" notice |
+
+Record `logs/the_question/log.txt` and `logs/runtime.log` with every result.
+
+Later milestones add the gameplay tests from the project brief (new game, dialogue,
 choices, save/load loops, rollback, suspend during gameplay, soak tests).

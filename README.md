@@ -3,8 +3,8 @@
 A Nintendo Switch homebrew loader (`.nro`) meant to run legally obtained, DRM-free Ren'Py
 games from the SD card, with a first-class remappable controller system.
 
-**Status: Milestones 1–3 (toolchain, input system, embedded CPython 3.12.8). It cannot run
-games yet.** The Ren'Py engine is Milestone 4. See [BUILD_STATUS.md](BUILD_STATUS.md)
+**Status: Milestones 1–3 done; Milestone 4 (Ren'Py 8.5.3 engine) builds and passes a desktop
+integration test. Nothing has run on a Switch yet.** See [BUILD_STATUS.md](BUILD_STATUS.md)
 for what is built, tested and hardware-verified (currently: nothing hardware-verified).
 
 ## Build (macOS Apple Silicon or Linux)
@@ -35,7 +35,19 @@ scripts/build.sh python
 scripts/build.sh runtime
 ```
 
-Output: `dist/renpy-runtime.nro`. The toolchain is the pinned `devkitpro/devkita64:20260219`
+Add the Ren'Py engine (between `python` and `runtime`; ~5 min first time):
+
+```bash
+scripts/build.sh renpy
+```
+
+Output: `dist/renpy-runtime.nro`. Desktop integration test (official Ren'Py SDK + our bridge):
+
+```bash
+tests/integration/renpy_desktop/run.sh
+```
+
+The toolchain is the pinned `devkitpro/devkita64:20260219`
 image (digest in `scripts/build.sh`). No Nintendo SDK files are used or needed.
 
 Host unit tests (Apple clang or gcc, no Docker):

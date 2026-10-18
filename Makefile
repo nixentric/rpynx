@@ -212,6 +212,7 @@ romfs:
 	@cp $(PYDIST)/lib/python312.zip $(ROMFS)/lib/
 	@cp -R $(RENPYDIST)/renpy-base $(ROMFS)/
 	@cp runtime/python/selftest.py $(ROMFS)/
+	@rm -f dist/$(TARGET).nro   # RomFS is not a make dependency: always repack
 
 $(BUILD): $(if $(ROMFS),romfs)
 	@[ -d $@ ] || mkdir -p $@ dist

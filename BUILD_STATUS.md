@@ -9,9 +9,10 @@ Last updated: 2026-10-18
 | 1 Toolchain | Code complete, builds. **HARDWARE UNVERIFIED** |
 | 2 Input system | Code complete, host-tested. **HARDWARE UNVERIFIED** |
 | 3 Python runtime | Static CPython 3.12.8 cross-builds; runtime `.nro` links and runs a self-test. **HARDWARE UNVERIFIED** |
-| 4 Ren'Py engine | Not started |
+| 4 Ren'Py engine | Ren'Py 8.5.3 builds and links into the runtime. Library → Launch is wired. The controller bridge passes 24/24 checks on desktop against the official engine. **HARDWARE UNVERIFIED** |
 
-**No Ren'Py game can be launched yet.**
+**No game has been run on a Switch.** Whether Ren'Py starts on the console (GLES on nouveau,
+memory) is the open question; H22 and H26 answer it.
 
 ## Implemented
 
@@ -37,7 +38,12 @@ Last updated: 2026-10-18
 - Input reset on focus change, resume and controller connect/disconnect/style change.
 
 **Runtime (`renpy-runtime.nro`)**
-- Static CPython 3.12.8 (4 small patches, documented in `runtime/python/README.md`) with 69
+- Ren'Py 8.5.3 (official source, 60 native modules, engine `.pyc` and precompiled common
+  scripts in RomFS). Game mode: `--game <folder>`. Per-game saves (`saves/<id>`), logs
+  (`logs/<id>`) and controller profile; GLES2 renderer. See `runtime/renpy/README.md`.
+- Controller bridge: logical actions → Ren'Py pad events or named events. The virtual
+  cursor drives Ren'Py's mouse with a software cursor. Ren'Py's own SDL pad support is off.
+- Static CPython 3.12.8 (5 small patches, documented in `runtime/python/README.md`) with 69
   built-in extension modules.
 - Stdlib compiled to sourceless `.pyc` in RomFS.
 - Python runs on an 8 MiB-stack thread while the main thread keeps servicing applet events.
@@ -54,12 +60,13 @@ Last updated: 2026-10-18
 | Base image | `devkitpro/devkita64:20260219` @ `sha256:1fc388c3…0282` (arm64 variant `645416b7…`) |
 | Toolchain | devkitA64 r29.2, gcc 15.2.0, newlib 4.6.0.20260123, libnx 4.12.0, switch-tools 1.13.1 |
 | Loader build | success, 0 warnings (`-Wall -Wextra`) |
-| `dist/renpy-loader.nro` | 354,501 bytes, sha256 `28f853d2d53292565080b430c77aa0ee7d7bd2ec7e229d387a09eab722ed373e` |
 | CPython | `Python-3.12.8.tar.xz` sha256 `c909157b…154e` (python.org MD5 and renpy-build copy match) |
 | CPython build | `scripts/build.sh python`: configure + `libpython3.12.a` + 511-module stdlib zip, success |
 | Runtime build | success, 0 warnings, static link with no unresolved symbols |
-| `dist/renpy-runtime.nro` | 13,096,745 bytes, sha256 `010a42dc209a0aacdfc83f11575f5b1d9bff9f05319d2aa609f08094d08b9fd7` |
-| Reproducibility | loader: identical across two clean builds. Runtime `.nro` and stdlib zip: identical across two full CPython + runtime rebuilds |
+| Ren'Py build | `scripts/build.sh renpy`: 60 modules / 73 objects in `librenpy.a`; 169 engine modules staged; 63 SDK common scripts digest-verified |
+| `dist/renpy-runtime.nro` | 55,302,753 bytes, sha256 `b1f1e678d72680e2434b5851ae148b78012d5c70a84892b0fa17eb032caf7f1e` |
+| `dist/renpy-loader.nro` | sha256 `17e49406500f7d0cedde61080c351066377f964553518b603f798207ef734204` (Launch wired) |
+| Reproducibility | loader: identical across two clean builds. Milestone 3 runtime: identical across two full rebuilds. Not re-checked for the Ren'Py runtime |
 | libnx layout check | `_Static_assert`s in `input_switch.c` pass |
 
 Other packages in the image relevant to Milestone 4: switch-sdl2 2.28.5, switch-sdl2_image
@@ -74,6 +81,13 @@ switch-bzip2 1.0.8, switch-liblzma 5.8.2.
 |---|---|---|---|---|---|
 | `scripts/test.sh` (151 checks) | macOS host, Apple clang, ASan + UBSan | n/a | all pass | 151/151 | PASS |
 | `runtime/python/selftest.py` against `python312.zip` only | Linux arm64 container, host CPython 3.12.8 | CPython 3.12.8 | 0 required failures | 0 failures (66 required checks) | PASS (host only) |
+| `tests/unit/test_posixpath_horizon.py` | Linux arm64 container, host CPython 3.12.8 | patched posixpath | 22 checks | 22 pass | PASS (host only) |
+| `tests/integration/renpy_desktop/run.sh` | Linux arm64 container, Xvfb + Mesa llvmpipe 22.3.6, GLES 3.2 | **official** Ren'Py 8.5.3 SDK + our `switch_main.py`/`rsl_bridge.py`, scripted `_rslnx` | 24 checks | 24 pass; screenshots in `build-test/out/` | PASS (desktop only) |
+
+The desktop run found and fixed two bridge bugs before any hardware test:
+- the launcher module was named `renpy_*`, so Ren'Py tried to pickle it at startup;
+- bridge event names were missing from `config.keymap`, so Ren'Py raised
+  "Invalid key specifier" on mouse events.
 
 The host input suite covers:
 - presets, and Nintendo A/B orientation;
@@ -95,14 +109,18 @@ itself. It does not prove anything about Horizon.
 - launch, rendering, button and stick reading, touch;
 - SD writes, sleep/resume, controller reconnect, docked mode;
 - chain-loading;
-- Python start-up, threads, `os.urandom`, filesystem, memory limits.
+- Python start-up, threads, `os.urandom`, filesystem, memory limits;
+- Ren'Py start-up, GLES on nouveau, audio, video, saves, suspend during play.
 
-Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H25.
+Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H35.
 
 ## Known bugs and limitations
 
 - Loader UI is a text console. The graphical library is Milestone 7.
-- The `overlay` action has no effect yet; it needs the Ren'Py runtime.
+- The in-game loader overlay is not built; L-stick press only shows a notice.
+- Live2D and 3D models are unsupported. FFmpeg is linked statically, so LGPL relinking
+  materials are still to be produced before distributing builds.
+- The runtime `.nro` is 55 MB; no memory or load-time measurement on hardware yet.
 - The emergency combo needs both + and −, so a single detached Joy-Con cannot do it.
 - The launcher UI state machine has no automated test (it needs libnx); the engine under it is tested.
 - The runtime self-test writes console text from a second thread. The libnx console is not
@@ -115,11 +133,9 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H25.
 
 ## Next engineering tasks
 
-1. Run H1–H25 on a console. H22/H23 matter most: they show whether CPython starts on Horizon
-   and how much memory each launch mode gives.
-2. Milestone 4:
-   - fetch Ren'Py 8.5.3 (MIT) and build its Cython/C modules statically (renpy-build's
-     static/inittab approach for iOS and web is the upstream reference);
-   - link SDL2, mesa GLES, freetype, harfbuzz, fribidi and ffmpeg from portlibs;
-   - bridge logical actions into Ren'Py events with SDL's controller handling off;
-   - run the Ren'Py tutorial or an MIT-licensed demo game.
+1. Run H1–H35 on a console. H22 (Python starts) and H26 (Ren'Py starts, GLES on nouveau)
+   decide what comes next. Send back `logs/runtime.log` and `logs/the_question/log.txt`.
+2. Milestone 5: the macOS importer (folder/ZIP/7z/RAR → manifest, engine detection,
+   compatibility report, SD export). It does not depend on hardware results.
+3. Milestone 6, after hardware feedback: save/load and suspend reliability, the in-game
+   overlay, fixes for whatever H26–H35 expose.

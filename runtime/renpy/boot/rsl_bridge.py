@@ -8,8 +8,9 @@ turns those actions into Ren'Py events, on Ren'Py's own thread:
   controller.post_event(), so the game's config.pad_bindings decide what they
   do, exactly as with a real gamepad. (Confirm = "a", Back = "b", ...)
 - Actions Ren'Py has no pad binding for become named events: hold-to-skip
-  uses Ren'Py's own "skip" event; history, auto-forward, quick menu and the
-  loader overlay use rsl_* events handled by a Keymap added to the underlay.
+  and auto-forward use Ren'Py's own "skip" and "toggle_afm" events; history,
+  quick menu and the loader overlay use rsl_* events handled by a Keymap
+  added to the underlay.
 - The virtual cursor moves Ren'Py's mouse (draw.set_mouse_pos), so hover,
   focus and mouse/keyboard mode switching are Ren'Py's normal behaviour.
   Switch SDL draws no hardware cursor, so a software cursor is installed.
@@ -41,7 +42,7 @@ PAD = {
 # Logical action -> named event handled by the underlay Keymap below.
 NAMED = {
     "history": "rsl_history",
-    "auto": "rsl_auto",
+    "auto": "toggle_afm",
     "quick_menu": "rsl_quick_menu",
     "overlay": "rsl_overlay",
 }
@@ -59,10 +60,6 @@ def _show_history():
     renpy.exports.notify("This game has no history screen.")
 
 
-def _toggle_auto():
-    return renpy.exports.run(renpy.store.Preference("auto-forward", "toggle"))
-
-
 def _toggle_quick_menu():
     store = renpy.store
     if hasattr(store, "quick_menu"):
@@ -78,10 +75,13 @@ def _overlay():
 def _setup_display():
     """Runs from Interface.start(), once the game's config exists."""
     config = renpy.config
+    # Ren'Py also matches these names against ordinary key/mouse events, and
+    # a name missing from config.keymap is parsed as a key specifier (error).
+    for name in NAMED.values():
+        config.keymap.setdefault(name, [])
     underlay = [i for i in config.underlay if not getattr(i, "_rsl", False)]
     keymap = renpy.display.behavior.Keymap(
         rsl_history=_show_history,
-        rsl_auto=_toggle_auto,
         rsl_quick_menu=_toggle_quick_menu,
         rsl_overlay=_overlay,
     )
