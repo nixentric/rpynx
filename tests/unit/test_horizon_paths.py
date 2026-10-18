@@ -1,7 +1,8 @@
-"""Checks runtime/python/patches/0005 (Horizon device paths) on the patched
-posixpath.py, loaded as if sys.platform were "horizon".
+"""Checks the Horizon device-path patches (runtime/python/patches/0005 posixpath,
+0006 importlib) on the patched sources, loaded as if sys.platform were "horizon".
+Hardware run 3 showed why both are needed: importlib keeps its own isabs().
 
-usage: python3.12 test_posixpath_horizon.py <patched Lib/posixpath.py>
+usage: python3.12 test_horizon_paths.py <patched CPython Lib dir>
 """
 import importlib.util
 import os
@@ -21,7 +22,8 @@ def load(path, platform):
 
 
 def main():
-    path = sys.argv[1]
+    lib = sys.argv[1]
+    path = os.path.join(lib, "posixpath.py")
     hz = load(path, "horizon")
     lx = load(path, "linux")
     checks = 0
@@ -50,7 +52,17 @@ def main():
     check(hz.normpath("sdmc:/a//b/") == "sdmc:/a/b", "normpath")
     cwd = os.getcwd()
     check(hz.abspath("rel") == hz.join(cwd, "rel"), "relative still uses cwd")
-    print("posixpath horizon: %d checks passed" % checks)
+    # importlib's private copies (spec_from_file_location, FileFinder).
+    bx = load(os.path.join(lib, "importlib", "_bootstrap_external.py"), "horizon")
+    bl = load(os.path.join(lib, "importlib", "_bootstrap_external.py"), "linux")
+    for p in ["romfs:/renpy-base", "sdmc:/switch/x.py", "/abs"]:
+        check(bx._path_isabs(p), "importlib isabs %r on horizon" % p)
+    for p in ["renpy", "", ":/x", "a:b/c"]:
+        check(not bx._path_isabs(p), "importlib not isabs %r on horizon" % p)
+    check(bx._path_abspath("romfs:/renpy-base/renpy.py") == "romfs:/renpy-base/renpy.py",
+          "importlib abspath keeps device path (hardware run 3 failure)")
+    check(not bl._path_isabs("romfs:/x"), "importlib unchanged on linux")
+    print("horizon paths: %d checks passed" % checks)
 
 
 if __name__ == "__main__":

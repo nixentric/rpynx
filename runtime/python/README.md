@@ -38,6 +38,8 @@ python.org's published MD5 `d46e5bf9f2e596a3ba45fc0b3c053dd2` and renpy-build's 
 | `0002-posixmodule-statvfs-without-fstatvfs.diff` | `os.statvfs` used a helper compiled only when `fstatvfs` exists; newlib has `statvfs` only. Keeps free-space queries |
 | `0003-timemodule-newlib-timezone.diff` | newlib declares `_timezone`/`_daylight`, not `timezone`/`daylight` |
 | `0004-subprocess-horizon-no-fork.diff` | Horizon cannot spawn processes; `subprocess` imports, and `Popen` raises instead of failing to import |
+| `0005-posixpath-horizon-device-paths.diff` | `os.path`: `sdmc:/…` and `romfs:/…` are absolute (`isabs`, `join`, `realpath`) |
+| `0006-importlib-horizon-device-paths.diff` | importlib's private `_path_isabs`, used by `spec_from_file_location` and `FileFinder`, gets the same rule. Found on hardware (run 3) |
 
 Configuration-only changes:
 
@@ -47,7 +49,9 @@ Configuration-only changes:
   - no `sys/resource.h` (newlib's copy has no rlimit API);
   - `chroot`, `fchdir`, `fdatasync` and `setgroups` are declared by newlib but not
     implemented by libnx (configure's probes only compile, so they cannot tell);
-  - `_posixsubprocess` is disabled.
+  - `_posixsubprocess` is disabled;
+  - no `poll`: it never returns on Horizon without the socket service, and `selectors`
+    probes it at import (found on hardware, run 3).
 - **`build.sh`:** appends `#define SSIZE_MAX __LONG_MAX__` to `pyconfig.h`, because newlib
   does not define `SSIZE_MAX`.
 - **Runtime shim (`nx_shims.c`):** newlib's `getentropy()` calls `_getentropy_r`, which libnx

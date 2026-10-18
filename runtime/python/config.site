@@ -20,3 +20,7 @@ ac_cv_func_fdatasync=no
 ac_cv_func_setgroups=no
 # Horizon cannot spawn processes (subprocess is patched to know this).
 py_cv_module__posixsubprocess=n/a
+# poll() never returns on Horizon unless the BSD socket service is up, and
+# `import selectors` (pulled in by socket, subprocess, asyncio) calls
+# poll(0) to probe it. Without poll, selectors uses select().
+ac_cv_func_poll=no

@@ -1,0 +1,20 @@
+diff --git a/Lib/importlib/_bootstrap_external.py b/Lib/importlib/_bootstrap_external.py
+index 9b8a8df..cdef33c 100644
+--- a/Lib/importlib/_bootstrap_external.py
++++ b/Lib/importlib/_bootstrap_external.py
+@@ -176,6 +176,15 @@ if _MS_WINDOWS:
+         root = _os._path_splitroot(path)[0].replace('/', '\\')
+         return len(root) > 1 and (root.startswith('\\\\') or root.endswith('\\'))
+ 
++elif sys.platform == 'horizon':
++    def _path_isabs(path):
++        """Replacement for os.path.isabs. On the Nintendo Switch, device
++        paths ("sdmc:/x", "romfs:/x") are absolute too, as in posixpath."""
++        if path.startswith(path_separators):
++            return True
++        i = path.find('/')
++        return i > 1 and path[i - 1] == ':'
++
+ else:
+     def _path_isabs(path):
+         """Replacement for os.path.isabs."""

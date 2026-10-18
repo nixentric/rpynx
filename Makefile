@@ -203,7 +203,7 @@ renpy:
 
 # Python-side tests, run with the host CPython 3.12.8 from `make python`.
 test-python:
-	build-python/host/bin/python3.12 tests/unit/test_posixpath_horizon.py build-python/src/Python-3.12.8/Lib/posixpath.py
+	build-python/host/bin/python3.12 tests/unit/test_horizon_paths.py build-python/src/Python-3.12.8/Lib
 
 # Runtime RomFS: compiled stdlib, the Ren'Py engine (renpy-base) and the
 # Python self-test.

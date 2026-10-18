@@ -112,6 +112,15 @@ itself. It does not prove anything about Horizon.
   immediately. Both errors were invisible because CPython dropped stdout/stderr on the
   libnx console; that is fixed for run 2.
 
+**Runs 2–3** ([run 2](tests/hardware/results/2026-10-18-run2.md),
+[run 3](tests/hardware/results/2026-10-18-run3.md)):
+- PASS: all 66 required stdlib imports on the console.
+- Causes found:
+  - `select.poll()` hangs on Horizon;
+  - importlib's own `isabs` breaks `romfs:/` paths. This is what stopped Ren'Py.
+
+  Both are fixed in the runtime for run 4 (pushed over Wi-Fi FTP).
+
 Everything else below remains unverified.
 
 **HARDWARE UNVERIFIED.** Neither `.nro` has run on a Switch or an emulator. Untested on device:
