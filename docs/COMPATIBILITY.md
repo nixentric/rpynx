@@ -8,7 +8,7 @@ but tests are incomplete or issues are known. **Unsupported** = cannot run relia
 | Ren'Py | Python | Status | Notes |
 |---|---|---|---|
 | 8.5.x | 3.12 | **Experimental** | Ren'Py 8.5.3 runs on the Switch (GLES 3.2 on nouveau); first game launched 2026-10-18 |
-| 8.0–8.4 | 3.9 / 3.12 | Unsupported | Phase 2: test whether 8.5.3 loads their `.rpyc` |
+| 8.0–8.4 | 3.9 / 3.12 | **Experimental** | Untested on hardware. The importer accepts them with a warning; Phase 2: test whether 8.5.3 loads their `.rpyc` |
 | 7.x | 2.7 | Unsupported | Phase 3: separate Python 2.7 runtime, if feasible |
 | ≤ 6.x | 2.x | Unsupported | Not planned |
 
@@ -18,7 +18,7 @@ No game has been tested. Rows are added only with a test record from `docs/HARDW
 
 | Game | Source | Ren'Py | Status | Tested on | Notes |
 |---|---|---|---|---|---|
-| The Question | bundled with the Ren'Py SDK | 8.5.3 | **Experimental** | Switch, handheld, application mode, 2026-10-18 (run 5): starts, renders on GPU, dialogue, menus, clean quit | Audio, saves, suspend, touch not yet checked on hardware |
+| The Question | bundled with the Ren'Py SDK | 8.5.3 | **Experimental** | Switch, handheld, application mode, 2026-10-18 (run 5): starts, renders on GPU, dialogue, menus, clean quit | Also launched from the importer's export (`games/the-question`, run 9). The loader then crashed after the return (SDL timer thread, see run 9). Audio, saves, suspend, touch not yet checked on hardware |
 
 ## Loader features
 
@@ -34,4 +34,4 @@ No game has been tested. Rows are added only with a test record from `docs/HARDW
 | Game launch from the library, per-game saves and logs | Implemented, **hardware unverified** |
 | Live2D, 3D models (GLTFModel) | Unsupported (no Switch libraries) |
 | In-game loader overlay | Not implemented (Milestone 6); the button shows a notice |
-| Importer | Not implemented (Milestone 5) |
+| Importer (`importer/rsl_import.py`, macOS) | Implemented, host-tested (16 tests); its export of The Question launched on hardware (run 9). See `docs/IMPORTER.md` |

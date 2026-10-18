@@ -16,10 +16,12 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
+#include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/iosupport.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -294,6 +296,11 @@ static void quit_sdl(void)
         { SDL_INIT_SENSOR, "sensor" }, { SDL_INIT_VIDEO, "video" },
         { SDL_INIT_TIMER, "timer" }, { SDL_INIT_EVENTS, "events" },
     };
+    /* Ren'Py's set_timer starts SDL's timer thread through SDL_AddTimer, which
+     * does not count the timer subsystem as initialised, so SDL_Quit() left the
+     * thread running into the loader; it crashed there (hardware run 9). Taking
+     * a reference makes the loop below quit the timer, which joins the thread. */
+    SDL_InitSubSystem(SDL_INIT_TIMER);
     Uint32 init = SDL_WasInit(SDL_INIT_EVERYTHING);
     rsl_log("SDL shutdown: subsystems 0x%x", (unsigned)init);
     for (size_t i = 0; i < sizeof subs / sizeof subs[0]; i++)
@@ -303,6 +310,55 @@ static void quit_sdl(void)
         }
     SDL_Quit();
     rsl_log("SDL shutdown: done");
+}
+
+/* CPython detaches every thread it starts (thread_pthread.h), but this libnx has
+ * no pthread_detach (it returns ENOSYS), so nobody closed an exited thread: its
+ * stack stayed mapped and the heap pages behind it borrowed. The next .nro in
+ * this process faulted on them (hardware run 10: sphaira after Exit). Keep the
+ * detached threads and close those that have exited. */
+struct __pthread_t { Thread thr; void *rc; };   /* libnx's own layout */
+void __libnx_free(void *p);
+
+static Mutex detach_lock;
+static struct __pthread_t *detached[64];
+static size_t detached_n, detached_closed;
+
+/* Caller holds detach_lock. Returns how many detached threads still run. */
+static size_t reap_detached(void)
+{
+    size_t n = 0;
+    for (size_t i = 0; i < detached_n; i++) {
+        struct __pthread_t *t = detached[i];
+        if (R_SUCCEEDED(svcWaitSynchronizationSingle(t->thr.handle, 0))) {
+            threadClose(&t->thr);
+            __libnx_free(t);
+            detached_closed++;
+        } else {
+            detached[n++] = t;
+        }
+    }
+    detached_n = n;
+    return n;
+}
+
+int __syscall_thread_detach(struct __pthread_t *t)
+{
+    mutexLock(&detach_lock);
+    reap_detached();
+    bool ok = detached_n < sizeof detached / sizeof detached[0];
+    if (ok)
+        detached[detached_n++] = t;
+    mutexUnlock(&detach_lock);
+    return ok ? 0 : EAGAIN;   /* full: that thread leaks as before */
+}
+
+static void close_detached_threads(void)
+{
+    mutexLock(&detach_lock);
+    size_t running = reap_detached();
+    mutexUnlock(&detach_lock);
+    rsl_log("detached threads: %zu closed, %zu still running", detached_closed, running);
 }
 
 static void *python_thread(void *arg)
@@ -539,6 +595,7 @@ static int run_game(struct job *job, const char *game, const char *savedir_arg, 
     rsl_log("Ren'Py finished with status %d", job->rc);
     tsExit();
     psmExit();
+    close_detached_threads();
     rsl_heap_audit("runtime exit");
 
     if (job->rc != 0) {
@@ -574,6 +631,7 @@ static int run_script(struct job *job, const char *script)
         pthread_join(th, NULL);
     }
     rsl_log("script finished with status %d", job->rc);
+    close_detached_threads();
     printf("\n\n");
     print_tail(ROOT "/cache/python-selftest.txt", 14);
     printf("\nFinished with status %d. Press + to exit.\n", job->rc);

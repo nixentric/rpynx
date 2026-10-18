@@ -1,6 +1,6 @@
 # Build status
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 ## Current milestone
 
@@ -10,6 +10,7 @@ Last updated: 2026-10-18
 | 2 Input system | Code complete, host-tested. **HARDWARE UNVERIFIED** |
 | 3 Python runtime | Static CPython 3.12.8 cross-builds; runtime `.nro` links and runs a self-test. **HARDWARE UNVERIFIED** |
 | 4 Ren'Py engine | Ren'Py 8.5.3 builds and links into the runtime. Library → Launch is wired. The controller bridge passes 24/24 checks on desktop against the official engine. **HARDWARE UNVERIFIED** |
+| 5 Importer | macOS importer: folder/ZIP/7z/RAR → compatibility report, `manifest.json`, SD export. Host-tested (16 tests). Its export of The Question launched on a Switch (run 9) |
 
 **Ren'Py 8.5.3 runs on a real Switch** (2026-10-18, run 5): "The Question" starts, renders
 with GLES 3.2 on nouveau, shows dialogue and quits cleanly. Audio, saves, suspend, touch
@@ -51,6 +52,15 @@ and the cursor are still unverified on hardware. See
 - Python runs on an 8 MiB-stack thread while the main thread keeps servicing applet events.
 - `_rslnx` module for memory and applet facts; `--return` chain-loads back to the loader.
 
+**Importer (`importer/rsl_import.py`, macOS, standard library only)** — see `docs/IMPORTER.md`
+- Inputs: a game folder, `.zip`, or `.7z`/`.rar` through the `7z` CLI.
+- Safe extraction into a temp folder: refuses absolute paths, `..`, links pointing outside,
+  passwords and decompression bombs (file-count, total-size and ratio limits).
+- Detects the game folder (Ren'Py's `path_to_gamedir` rule), the Ren'Py version, Python 2
+  or 3, custom Python, Windows native code, uncommon media and non-ASCII names.
+- Writes `games/<id>/game` + versioned `manifest.json` (`experimental` or `unsupported`,
+  never `verified`). Refuses to overwrite without `--replace`, and keeps saves.
+
 **Other**
 - Line-flushed logs: `logs/loader.log`, `logs/runtime.log`.
 
@@ -85,6 +95,7 @@ switch-bzip2 1.0.8, switch-liblzma 5.8.2.
 | `runtime/python/selftest.py` against `python312.zip` only | Linux arm64 container, host CPython 3.12.8 | CPython 3.12.8 | 0 required failures | 0 failures (66 required checks) | PASS (host only) |
 | `tests/unit/test_posixpath_horizon.py` | Linux arm64 container, host CPython 3.12.8 | patched posixpath | 22 checks | 22 pass | PASS (host only) |
 | `tests/integration/renpy_desktop/run.sh` | Linux arm64 container, Xvfb + Mesa llvmpipe 22.3.6, GLES 3.2 | **official** Ren'Py 8.5.3 SDK + our `switch_main.py`/`rsl_bridge.py`, scripted `_rslnx` | 24 checks | 24 pass; screenshots in `build-test/out/` | PASS (desktop only) |
+| `tests/unit/test_importer.py` (16 tests, part of `scripts/test.sh`) | macOS host, `/usr/bin/python3` 3.9.6 | n/a | all pass | 16/16 | PASS |
 
 The desktop run found and fixed two bridge bugs before any hardware test:
 - the launcher module was named `renpy_*`, so Ren'Py tried to pickle it at startup;
@@ -123,6 +134,16 @@ itself. It does not prove anything about Horizon.
 
   Both are fixed in the runtime for run 4 (pushed over Wi-Fi FTP).
 
+**Run 9, 2026-10-19** ([tests/hardware/results/2026-10-19-run9.md](tests/hardware/results/2026-10-19-run9.md)):
+- PASS: the importer's export of The Question (`games/the-question`), uploaded over FTP
+  (173/173 files read back identical), launches from the library and quits with status 0.
+- FAIL: 21 s after returning, the loader's main menu crashes ("The software was closed
+  because an error occurred").
+  - Cause: SDL's timer thread from the runtime outlives it. `SDL_Quit()` does not stop a
+    timer thread that `SDL_AddTimer` started without `SDL_INIT_TIMER`.
+  - Fix in runtime `fed4dc1b…`: `quit_sdl()` takes a timer reference so SDL joins the thread.
+    It is on the console, not retested yet.
+
 Everything else below remains unverified.
 
 **HARDWARE UNVERIFIED.** Neither `.nro` has run on a Switch or an emulator. Untested on device:
@@ -150,12 +171,22 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H35.
   `runtime/python/README.md`.
 - Chain-loading needs the loader to be started from the Homebrew Menu.
 - The project license is not chosen yet.
+- Crash after returning from a game (run 9): SDL's timer thread from the runtime keeps
+  running after the runtime's code is unloaded, then crashes the loader. Fixed in runtime
+  `fed4dc1b…`, confirmed on the console (run 10).
+- Exit to the Homebrew Menu after a game crashes sphaira (run 10).
+  - [Likely] cause: libnx has no `pthread_detach`, so the stacks of CPython's exited threads
+    stayed mapped.
+  - Fix in runtime `35508472…` (on the console), not retested yet.
+  - Workaround: close the software from HOME.
 
 ## Next engineering tasks
 
 1. Run H1–H35 on a console. H22 (Python starts) and H26 (Ren'Py starts, GLES on nouveau)
    decide what comes next. Send back `logs/runtime.log` and `logs/the_question/log.txt`.
-2. Milestone 5: the macOS importer (folder/ZIP/7z/RAR → manifest, engine detection,
-   compatibility report, SD export). It does not depend on hardware results.
+2. Run 11 with runtime `35508472…` (detached-thread clean-up):
+   - play a game, quit, and wait on the loader for a minute;
+   - relaunch a game (the run 7 `malloc` crash);
+   - exit to the Homebrew Menu.
 3. Milestone 6, after hardware feedback: save/load and suspend reliability, the in-game
    overlay, fixes for whatever H26–H35 expose.

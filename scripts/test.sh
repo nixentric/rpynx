@@ -11,6 +11,9 @@ cc -std=gnu11 -g -O1 -Wall -Wextra -Werror -Wno-deprecated-declarations -fsaniti
     -lm -o "$out/test_input"
 "$out/test_input"
 
+# Importer: macOS system Python, standard library only.
+/usr/bin/python3 -m unittest tests/unit/test_importer.py
+
 # Python-side tests need Docker and the host CPython from `scripts/build.sh python`.
 if command -v docker >/dev/null && [ -x build-python/host/bin/python3.12 ]; then
     scripts/build.sh test-python
