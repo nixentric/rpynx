@@ -61,7 +61,9 @@ APP_TITLE	:=	Ren'Py Switch Runtime
 ROMFS		:=	build-runtime-romfs
 # Static archives with circular dependencies, so one group. GLESv2 is reached
 # through SDL_GL_GetProcAddress (Ren'Py's uguu loader) but must be linked.
-PROGRAM_LIBS	:=	-Wl,--start-group -lrenpy -lpython3.12 -lSDL2_image -lSDL2 -lEGL -lGLESv2 -lglapi \
+# The wraps let runtime/main.c track every pthread and close leftovers at exit.
+PROGRAM_LIBS	:=	-Wl,--wrap=__syscall_thread_create -Wl,--wrap=__syscall_thread_join \
+			-Wl,--start-group -lrenpy -lpython3.12 -lSDL2_image -lSDL2 -lEGL -lGLESv2 -lglapi \
 			-ldrm_nouveau -lavformat -lavcodec -lswresample -lswscale -lavutil -ldav1d \
 			-lharfbuzz -lfreetype -lfribidi -lpng16 -ljpeg -lwebp -lbz2 -llzma -lz \
 			-lstdc++ -Wl,--end-group

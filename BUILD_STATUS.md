@@ -177,16 +177,19 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H35.
 - Exit to the Homebrew Menu after a game crashes sphaira (run 10).
   - [Likely] cause: libnx has no `pthread_detach`, so the stacks of CPython's exited threads
     stayed mapped.
-  - Fix in runtime `35508472…` (on the console), not retested yet.
+  - Fix in runtime `35508472…` (run 11): Exit after a game no longer crashed, and
+    6 detached threads were closed. 3 thread stacks (396 KiB) still stay mapped in some
+    sessions. The next launch in that process then crashed in `memset` on a new SDL surface.
+  - Fixed in runtime `9914bf86…`: every pthread is tracked, and at exit every exited one is
+    closed. Run 12 passed: 3 games in a row in one process and Exit, `borrowed` stayed at
+    8548 KiB, no crash. The 3 leftovers per game were Ren'Py's `ffmedia` decode threads.
   - Workaround: close the software from HOME.
 
 ## Next engineering tasks
 
 1. Run H1–H35 on a console. H22 (Python starts) and H26 (Ren'Py starts, GLES on nouveau)
    decide what comes next. Send back `logs/runtime.log` and `logs/the_question/log.txt`.
-2. Run 11 with runtime `35508472…` (detached-thread clean-up):
-   - play a game, quit, and wait on the loader for a minute;
-   - relaunch a game (the run 7 `malloc` crash);
-   - exit to the Homebrew Menu.
+2. Put the run 9 loader (`dist/renpy-loader.nro` `0d985f15…`, the applet-mode launch guard)
+   on the console. The card still runs the run 8 loader `b6997861…`.
 3. Milestone 6, after hardware feedback: save/load and suspend reliability, the in-game
    overlay, fixes for whatever H26–H35 expose.
