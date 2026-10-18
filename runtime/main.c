@@ -282,10 +282,34 @@ static int run_python(struct job *j)
     return rc;
 }
 
+/* Shut SDL down on the thread that initialised it (Ren'Py's): from the main
+ * thread SDL_Quit() hung forever after the game quit (hardware runs 5-6).
+ * Each subsystem is logged so a remaining hang names its culprit. */
+static void quit_sdl(void)
+{
+    static const struct { Uint32 flag; const char *name; } subs[] = {
+        { SDL_INIT_AUDIO, "audio" }, { SDL_INIT_GAMECONTROLLER, "gamecontroller" },
+        { SDL_INIT_JOYSTICK, "joystick" }, { SDL_INIT_HAPTIC, "haptic" },
+        { SDL_INIT_SENSOR, "sensor" }, { SDL_INIT_VIDEO, "video" },
+        { SDL_INIT_TIMER, "timer" }, { SDL_INIT_EVENTS, "events" },
+    };
+    Uint32 init = SDL_WasInit(SDL_INIT_EVERYTHING);
+    rsl_log("SDL shutdown: subsystems 0x%x", (unsigned)init);
+    for (size_t i = 0; i < sizeof subs / sizeof subs[0]; i++)
+        if (init & subs[i].flag) {
+            rsl_log("SDL shutdown: %s", subs[i].name);
+            SDL_QuitSubSystem(subs[i].flag);
+        }
+    SDL_Quit();
+    rsl_log("SDL shutdown: done");
+}
+
 static void *python_thread(void *arg)
 {
     struct job *j = arg;
     j->rc = run_python(j);
+    if (j->renpy)
+        quit_sdl();
     j->done = true;
     return NULL;
 }
@@ -327,10 +351,53 @@ static void last_line(const char *path, char *out, size_t len)
  * runtime.log, so a stall shows where it is stuck. In script mode also
  * service applet messages and show progress (the only thread that touches the
  * console: the libnx console is not thread-safe). */
+/* Heat telemetry: SoC and board temperature, how busy this core is, and the
+ * battery level, logged every TELEMETRY_S seconds of play. Measures whether
+ * an optimisation actually lowers temperature (user report: "it gets warm"). */
+#define TELEMETRY_S 30
+
+static float read_temp(TsDeviceCode code, TsLocation legacy)
+{
+    TsSession s;
+    float t = -1.0f;
+    if (R_SUCCEEDED(tsOpenSession(&s, code))) {
+        if (R_FAILED(tsSessionGetTemperature(&s, &t)))
+            t = -1.0f;
+        tsSessionClose(&s);
+    } else {
+        s32 mc;
+        if (R_SUCCEEDED(tsGetTemperatureMilliC(legacy, &mc)))
+            t = mc / 1000.0f;
+    }
+    return t;
+}
+
+static void log_telemetry(int secs, u64 *last_idle, u64 *last_tick)
+{
+    u64 idle = 0, tick = armGetSystemTick();
+    svcGetInfo(&idle, InfoType_IdleTickCount, INVALID_HANDLE, (u64)svcGetCurrentProcessorNumber());
+    int busy = -1;
+    if (*last_tick && tick > *last_tick)
+        busy = 100 - (int)(100 * (idle - *last_idle) / (tick - *last_tick));
+    *last_idle = idle;
+    *last_tick = tick;
+    u32 battery = 0;
+    PsmChargerType charger = PsmChargerType_Unconnected;
+    psmGetBatteryChargePercentage(&battery);
+    psmGetChargerType(&charger);
+    rsl_log("telemetry %4d s: SoC %.1f C, board %.1f C, core %d busy %d%%, battery %u%%%s, %s",
+            secs, read_temp(TsDeviceCode_LocationExternal, TsLocation_External),
+            read_temp(TsDeviceCode_LocationInternal, TsLocation_Internal),
+            (int)svcGetCurrentProcessorNumber(), busy, (unsigned)battery,
+            charger != PsmChargerType_Unconnected ? " (charging)" : "",
+            appletGetOperationMode() == AppletOperationMode_Console ? "docked" : "handheld");
+}
+
 static void watch_python(struct job *j, const int *dump_at, int n_dumps, const char *progress_file)
 {
     uint64_t start = armGetSystemTick();
-    int next = 0;
+    int next = 0, next_telemetry = 0;
+    u64 last_idle = 0, last_tick = 0;
     char line[80];
     while (!j->done) {
         if (progress_file && !appletMainLoop())
@@ -349,6 +416,10 @@ static void watch_python(struct job *j, const int *dump_at, int n_dumps, const c
                     rsl_log("watchdog: %s", err);
                 fsync(fd);
             }
+        }
+        if (!progress_file && secs >= next_telemetry) {
+            log_telemetry(secs, &last_idle, &last_tick);
+            next_telemetry += TELEMETRY_S;
         }
         if (progress_file) {
             last_line(progress_file, line, sizeof line);
@@ -433,6 +504,16 @@ static int run_game(struct job *job, const char *game, const char *savedir_arg, 
      * whenever it compiles one; pointless on a console and 1.3 s per launch. */
     setenv("RENPY_DISABLE_BACKUPS", "I take responsibility for this.", 1);
     setenv("RENPY_RENDERER", "gles2", 1);
+    /* Opt-in 30 fps cap (swap every 2nd vblank; Ren'Py's own switch) to
+     * compare heat. ponytail: flag file until the loader has a runtime
+     * settings screen (Milestone 7). */
+    struct stat fst;
+    if (stat(ROOT "/config/power-saver", &fst) == 0) {
+        setenv("RENPY_GL_VSYNC", "2", 1);
+        rsl_log("power saver: 30 fps cap");
+    }
+    tsInitialize();
+    psmInitialize();
     load_controls(id);
     rsl_log("runtime start: game %s, saves %s, applet type %d", basedir, savedir, (int)appletGetAppletType());
 
@@ -451,7 +532,8 @@ static int run_game(struct job *job, const char *game, const char *savedir_arg, 
         pthread_join(th, NULL);
     }
     rsl_log("Ren'Py finished with status %d", job->rc);
-    SDL_Quit();
+    tsExit();
+    psmExit();
 
     if (job->rc != 0) {
         consoleInit(NULL);
