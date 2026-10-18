@@ -8,6 +8,7 @@
 void rsl_log_open(const char *path);
 void rsl_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 const char *rsl_log_recent(int i);   /* 0 = oldest kept, NULL past the end */
+int rsl_log_fd(void);                /* flushed file descriptor for raw writes, or -1 */
 void rsl_log_close(void);
 
 #endif

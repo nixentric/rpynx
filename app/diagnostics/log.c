@@ -46,6 +46,14 @@ const char *rsl_log_recent(int i)
     return g_ring[(g_head - g_count + i + RSL_LOG_KEEP) % RSL_LOG_KEEP];
 }
 
+int rsl_log_fd(void)
+{
+    if (!g_file)
+        return -1;
+    fflush(g_file);
+    return fileno(g_file);
+}
+
 void rsl_log_close(void)
 {
     if (g_file) {

@@ -14,7 +14,8 @@ results = []
 SCRATCH = sys.argv[1] if len(sys.argv) > 1 else None
 
 # Progress goes to the report file as it happens (flushed and synced), so a
-# hang or crash still shows which check was running.
+# hang or crash still shows which check was running. (The runtime's main
+# thread dumps Python stacks to runtime.log if the run stalls.)
 _report = open(os.path.join(SCRATCH, "python-selftest.txt"), "w", encoding="utf-8") if SCRATCH else None
 
 
@@ -24,14 +25,6 @@ def progress(text):
         _report.write(text + "\n")
         _report.flush()
         os.fsync(_report.fileno())
-
-
-try:
-    import faulthandler
-    if _report:
-        faulthandler.dump_traceback_later(30, repeat=True, file=_report)
-except Exception as e:
-    progress("faulthandler unavailable: %r" % (e,))
 
 
 def check(name, required=True):
@@ -186,10 +179,6 @@ def main():
         lines.append("%s %-28s %s" % (tag, name, detail))
     lines.append("%d required check(s) failed" % failed)
     progress("\n== summary ==\n" + "\n".join(lines))
-    try:
-        faulthandler.cancel_dump_traceback_later()
-    except Exception:
-        pass
     return failed
 
 
