@@ -9,3 +9,5 @@ build-runtime/
 build-runtime-romfs/
 build-renpy/
 build-test/
+core
+core.*
