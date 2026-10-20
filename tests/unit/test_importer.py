@@ -5,6 +5,7 @@ usage: /usr/bin/python3 -m unittest tests/unit/test_importer.py
 import contextlib
 import io
 import json
+import ntpath
 import os
 import pickle
 import shutil
@@ -13,9 +14,11 @@ import struct
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 import zipfile
 import zlib
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "importer"))
 import rsl_import as imp  # noqa: E402
@@ -24,6 +27,30 @@ import rsl_import as imp  # noqa: E402
 def rpyc(protocol):
     """A minimal RPC2 .rpyc: slot 1 holds a zlib'd pickle of the given protocol."""
     body = zlib.compress(pickle.dumps({"version": 5003000, "key": "unlocked"}, protocol=protocol))
+    return b"RENPY RPC2" + struct.pack("<III", 1, 46, len(body)) + bytes(24) + body
+
+
+def py2_script(label, line):
+    """A Ren'Py 7-style .rpyc of `label <label>: "<line>"`: slot 1 holds a protocol 2 pickle
+    of (data, statements). Ren'Py 7's nodes have __slots__, so each pickles as
+    (None, {slot: value}); stand-in renpy.ast classes produce the same opcodes."""
+    ast = types.ModuleType("renpy.ast")
+    slots = ("name", "filename", "linenumber", "next", "block", "parameters", "hide", "who", "what",
+             "with_", "expression")
+    for name in ("Label", "Say", "Return"):
+        setattr(ast, name, type(name, (object,), {"__module__": "renpy.ast", "__slots__": slots}))
+
+    def node(cls, **state):
+        n = cls()
+        for k, v in dict(state, filename="game/script.rpy", linenumber=1, next=None).items():
+            setattr(n, k, v)
+        return n
+
+    with mock.patch.dict(sys.modules, {"renpy": types.ModuleType("renpy"), "renpy.ast": ast}):
+        say = node(ast.Say, who=None, what=line, with_=None)
+        stmts = [node(ast.Label, name=label, block=[say], parameters=None, hide=False),
+                 node(ast.Return, expression=None)]
+        body = zlib.compress(pickle.dumps(({"version": 5003000, "key": "unlocked"}, stmts), 2))
     return b"RENPY RPC2" + struct.pack("<III", 1, 46, len(body)) + bytes(24) + body
 
 
@@ -65,6 +92,13 @@ def make_rpa(path, members, protocol=5, key=0x42424242, index=None):
     body += zlib.compress(pickle.dumps(entries if index is None else index, protocol))
     body[8:24] = b"%016x" % offset
     write(path, bytes(body))
+
+
+def find_7z():
+    try:
+        return imp.seven_zip()
+    except imp.Refused:
+        return None
 
 
 def listing(root):
@@ -213,12 +247,41 @@ class ImporterTest(unittest.TestCase):
         code, _, err = self.run_cli(orphan, "--recompile")
         self.assertEqual(code, 1)
         self.assertIn("1 compiled scripts have no .rpy source (secret.rpyc)", err)
+        self.assertIn("pip install rpycdec", err)
+        with mock.patch.dict(os.environ, {"PATH": self.path("empty")}):
+            code, _, err = self.run_cli(orphan, "--recompile", "--decompile")
+        self.assertIn("rpycdec not found on PATH", err)
+        code, _, err = self.run_cli(orphan, "--recompile", "--decompile", "--rpycdec-python", self.path("nopython"))
+        self.assertIn("--decompile: cannot run", err)
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            imp.main([orphan, "--decompile"])
         os.remove(os.path.join(orphan, "game", "secret.rpyc"))
         write(os.path.join(orphan, "game", "scripts.rpa"), b"RPA-3.0 ")
         code, _, err = self.run_cli(orphan, "--recompile")
         self.assertIn(".rpa archives", err)
         m, _, _ = self.analyze_dir(orphan)
         self.assertIn("try --recompile", m["reasons"][0])
+
+    @unittest.skipUnless(shutil.which("rpycdec"), "rpycdec not installed")
+    def test_decompile_sourceless_py2_game(self):
+        src = make_game(self.path("OldGame"), py=2)
+        os.remove(os.path.join(src, "game", "script.rpy"))
+        write(os.path.join(src, "game", "script.rpyc"), py2_script("start", "Hello from a decompiled script."))
+        write(os.path.join(src, "game", "chapters", "one.rpyc"), py2_script("one", "Chapter one."))
+        before = listing(src)
+        out = self.path("sd")
+        code, stdout, err = self.run_cli(src, "--out", out, "--recompile", "--decompile")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(listing(src), before, "source must not change")
+        game = os.path.join(out, "switch", "renpy-loader", "games", "fake-quest", "game")
+        self.assertEqual(listing(game), ["chapters", "chapters/one.rpy", "music.ogg", "options.rpy", "script.rpy"])
+        with open(os.path.join(game, "script.rpy"), encoding="utf-8") as f:
+            self.assertEqual(f.read().split(), ["label", "start:", '"Hello', "from", "a", "decompiled", 'script."'])
+        with open(os.path.join(game, "..", "manifest.json"), encoding="utf-8") as f:
+            m = json.load(f)
+        self.assertEqual((m["status"], m["decompiled"]), ("experimental", ["chapters/one.rpy", "script.rpy"]))
+        self.assertEqual((m["files"]["rpy"], m["files"]["rpyc"]), (3, 0))
+        self.assertIn("may differ from the originals", "\n".join(m["warnings"]))
 
     def test_py2_rpyc_without_engine_is_unsupported(self):
         write(self.path("g", "game", "script.rpyc"), rpyc(2))
@@ -408,14 +471,105 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("no Ren'Py", err)
 
-    @unittest.skipUnless(shutil.which("7z"), "7z not installed")
+    @unittest.skipUnless(find_7z(), "7-Zip not installed")
     def test_7z_archive(self):
         src = make_game(self.path("src", "FakeQuest"))
         archive = self.path("FakeQuest.7z")
-        subprocess.run(["7z", "a", "-bd", archive, src], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run([find_7z(), "a", "-bd", archive, src], check=True, stdout=subprocess.DEVNULL)
         code, stdout, err = self.run_cli(archive)
         self.assertEqual(code, 0, err)
         self.assertIn("EXPERIMENTAL", stdout)
+
+    def test_export_progress_and_cancel_keep_old_export(self):
+        src = make_game(self.path("FakeQuest"))
+        out = self.path("sd")
+        m, gamedir, files, extra = imp.analyze(src, "directory", src)
+        calls = []
+        imp.export(m, gamedir, files, out, False, extra, lambda *a: calls.append(a))
+        self.assertEqual(calls[0][:2], (0, 4))
+        self.assertEqual(calls[-1], (4, 4, "", ""))
+        write(os.path.join(src, "game", "new.rpy"), "label new:\n")
+        m, gamedir, files, extra = imp.analyze(src, "directory", src)
+
+        def cancel(done, total, rel, note):
+            if done == 2:
+                raise KeyboardInterrupt
+        with self.assertRaises(KeyboardInterrupt):
+            imp.export(m, gamedir, files, out, True, extra, cancel)
+        games = os.path.join(out, "switch", "renpy-loader", "games")
+        self.assertEqual(os.listdir(games), ["fake-quest"], "the staged copy is removed")
+        self.assertEqual(listing(os.path.join(games, "fake-quest", "game")),
+                         ["music.ogg", "options.rpy", "script.rpy", "script.rpyc"], "old export intact")
+
+    # ------------------------------------------------- Windows, faked where needed
+
+    def test_windows_unsafe_archive_names(self):
+        bad = ["game/.. /evil.txt", "game/... /x", "game/script.rpy:stream", "game/CON", "game/nul.txt",
+               "game/lpt1", "game/a?.png", "game/what*", "game/trailing.", "game/space "]
+        good = ["game/images/bg.png", "game/console.rpy", "game/セーブ.png", "game/nullable.rpy"]
+        with mock.patch.object(imp, "WINDOWS", True):
+            for name in bad:
+                with self.assertRaises(imp.Refused, msg=name):
+                    imp.member_parts(name)
+            for name in good:
+                self.assertTrue(imp.member_parts(name), name)
+            z = self.zip_of([("game/script.rpy", "label start:\n"), ("game/.. /evil.txt", "x")])
+            self.assertEqual(os.listdir(self.assertRefused(z, "Windows cannot create")), [])
+        self.assertEqual(imp.member_parts("game/a?.png"), ["game", "a?.png"], "fine on macOS/Linux")
+
+    def test_windows_tool_discovery(self):
+        def tool(path):
+            write(path)
+            os.chmod(path, 0o755)
+            return path
+        program_files = self.path("Program Files")
+        seven = tool(os.path.join(program_files, "7-Zip", "7z.exe"))
+        tools = self.path("ffmpeg", "bin")
+        tool(os.path.join(tools, "ffprobe.exe" if os.name == "nt" else "ffprobe"))
+        empty = self.path("empty")
+        os.makedirs(empty)
+        with mock.patch.dict(os.environ, {"PATH": empty, "ProgramFiles": program_files}), \
+                mock.patch.object(imp, "SEVEN_ZIP", ("7z",)), mock.patch.object(imp, "TOOL_DIRS", []):
+            self.assertEqual(imp.seven_zip(), seven)
+            self.assertIsNone(imp.find_tool(("ffprobe",)))
+            imp.TOOL_DIRS.append(tools)   # what --tools and the UI's "Tools folder" set
+            self.assertEqual(os.path.dirname(imp.find_tool(("ffprobe",))), tools)
+            del os.environ["ProgramFiles"]
+            with self.assertRaisesRegex(imp.Refused, "7-zip.org"):
+                imp.seven_zip()
+
+    def test_windows_tools_run_without_console(self):
+        with mock.patch.object(imp, "NO_WINDOW", 0x08000000), \
+                mock.patch.object(imp.subprocess, "run") as run, mock.patch.object(imp, "seven_zip", lambda: "7z.exe"):
+            run.return_value.stdout = "{}"
+            imp.run_7z(["l", "-slt", "x.7z"])
+            imp.probe_video("ffprobe.exe", "v.webm")
+        for call in run.call_args_list:
+            self.assertEqual(call.kwargs["creationflags"], 0x08000000)
+            self.assertEqual((call.kwargs["encoding"], call.kwargs["stdin"]), ("utf-8", subprocess.DEVNULL))
+        self.assertEqual(run.call_args_list[0].args[0][:3], ["7z.exe", "l", "-sccUTF-8"])
+
+    def test_windows_bare_drive_is_its_root(self):
+        with mock.patch.object(imp.os, "path", ntpath), mock.patch.object(imp.os, "sep", "\\"):
+            for out in ("E:", "E:\\"):
+                self.assertEqual(imp.games_dir(out), "E:\\switch\\renpy-loader\\games", out)
+
+    def test_console_that_cannot_encode_the_title(self):
+        src = make_game(self.path("FakeQuest"))
+        write(os.path.join(src, "game", "options.rpy"), 'define config.name = _("ドキドキ")\n')
+        console = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")   # Windows, output redirected
+        with contextlib.redirect_stdout(console):
+            code = imp.main([src])
+        console.flush()
+        self.assertEqual(code, 0)
+        self.assertIn(b"???? ", console.buffer.getvalue())
+
+    def test_rmtree_removes_read_only_files(self):
+        d = self.path("unpacked")
+        write(os.path.join(d, "game", "locked.rpy"), "x")
+        os.chmod(os.path.join(d, "game", "locked.rpy"), stat.S_IREAD)   # read-only attribute on Windows
+        imp.rmtree(d)
+        self.assertFalse(os.path.exists(d))
 
 
 if __name__ == "__main__":

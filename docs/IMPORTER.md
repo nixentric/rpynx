@@ -1,17 +1,27 @@
-# Importer (macOS)
+# Importer
 
 `importer/rsl_import.py` checks a DRM-free Ren'Py game and copies it into the layout the
-Switch loader expects. It needs only the macOS system Python (`/usr/bin/python3`, 3.9+).
-It also needs `7z` for `.7z` and `.rar` files (`brew install p7zip`).
+Switch loader expects. `importer/rsl_import_gui.py` is a window over the same code (see
+"Desktop window"). Both need only Python 3.9+ and its standard library, on Windows, macOS
+(`/usr/bin/python3` for the command line) or Linux. Two optional tools are found on the
+system (see "Tools"):
+- 7-Zip, for `.7z` and `.rar` files;
+- FFmpeg (`ffprobe`, `ffmpeg`), to check videos and for `--optimize`.
+
+People without Python can use the built app, `RSL Importer.exe` or `RSL Importer.app` (see
+"Building the app").
 
 The importer never runs game code and never unpickles anything. It never changes the source
-folder or archive. It does not decrypt or unpack `.rpa` archives.
+folder or archive. It does not decrypt or unpack `.rpa` archives. The optional `--decompile`
+passes copies of `.rpyc` files to an external tool, rpycdec, which runs in its own process
+(see "Decompile").
 
 ## Usage
 
 ```bash
 python3 importer/rsl_import.py SOURCE                    # report only
-python3 importer/rsl_import.py SOURCE --out /Volumes/SD  # report + export
+python3 importer/rsl_import.py SOURCE --out /Volumes/SD  # report + export (macOS)
+py importer\rsl_import.py SOURCE --out E:\               # report + export (Windows)
 ```
 
 `SOURCE` can be:
@@ -25,6 +35,9 @@ python3 importer/rsl_import.py SOURCE --out /Volumes/SD  # report + export
 | `--replace` | Update an existing export. Without it, the importer refuses if `games/<id>` exists. |
 | `--optimize` | Re-encode videos above 30 fps at 30 fps, at the same size and constant quality. Needs FFmpeg. See "Switch performance". |
 | `--recompile` | Ren'Py 7 / Python 2 games only. Exports without `.rpyc`, so Ren'Py 8.5.3 compiles the `.rpy` sources with Python 3 (see below). |
+| `--decompile` | With `--recompile`: rebuilds a `.rpy` for each `.rpyc` that has none, using rpycdec (see "Decompile"). |
+| `--tools DIR` | A folder holding `ffmpeg`/`ffprobe` or `7z`, searched before `PATH` (see "Tools"). |
+| `--rpycdec-python PYTHON` | With `--decompile`: a Python 3.10+ interpreter that has rpycdec installed. Default: the `rpycdec` command on `PATH`. |
 
 Exit status: `0` OK; `1` refused (unsafe archive, not a Ren'Py game, unsupported game,
 or the export already exists); `2` bad arguments.
@@ -40,6 +53,95 @@ The Question  (id: the-question)
   Ren'Py:  8.5.3.26051504   Python: 3
   Status:  EXPERIMENTAL on runtime renpy-8.5.3
 ```
+
+## Desktop window
+
+```bash
+python3 importer/rsl_import_gui.py
+```
+
+On Windows: `py importer\rsl_import_gui.py`, or double-click `RSL Importer.exe`. The window
+only collects options and shows results; every check and copy is `rsl_import.py`'s.
+
+1. **Game**: *Folder…* or *Archive…* (`.zip`, `.7z`, `.rar`).
+2. **Options**: *Optimize* is `--optimize`, *Recompile* is `--recompile`, *Game id* is
+   `--id` (blank: made from the title). Changing an option or the game clears the report:
+   analyze again before exporting.
+3. **Tools** shows whether 7-Zip, `ffprobe` and `ffmpeg` were found. *Tools folder…* is
+   `--tools`.
+4. **Analyze** shows the same report as the command line: status, Ren'Py version, warnings,
+   Switch performance issues, and the `Checked:` line (loose, archived and locked assets).
+5. **SD card**: its top folder, `E:\` on Windows or `/Volumes/<name>` on macOS. *Replace* is
+   `--replace`.
+6. **Export** copies file by file with a progress bar. Re-encoding a video can take minutes,
+   and the status line says so. **Cancel** stops after the current file: the half-made copy
+   is removed, and an existing export stays as it was.
+
+Export is disabled for `unsupported` games. `--decompile` is only on the command line.
+
+macOS: Apple's `/usr/bin/python3` comes with Tk 8.5, which aborts the whole process on
+current macOS (seen on 15.7). The window refuses to start there and says why. Use the built
+app, Python from python.org, or `brew install python-tk`. The command line still works with
+`/usr/bin/python3`.
+
+## Windows setup
+
+1. Either use `RSL Importer.exe` (no Python needed), or install Python 3.9+ from
+   python.org. Keep "tcl/tk and IDLE" ticked in its installer; that is the window toolkit.
+2. 7-Zip, from 7-zip.org. It is found in `C:\Program Files\7-Zip` without further setup.
+3. FFmpeg. `winget install Gyan.FFmpeg` puts it on `PATH`. Or unzip a build linked from
+   ffmpeg.org and choose its `bin` folder with *Tools folder…* (`--tools C:\ffmpeg\bin`).
+4. Put the SD card in the PC and choose its drive, for example `E:\`. On the command line a
+   bare `--out E:` also means the drive's top folder, not its current folder.
+
+What differs on Windows:
+- Archive entries that Windows cannot create under their own name are refused: device names
+  (`CON`, `NUL.txt`, `COM1`, …), `:` (it would write an alternate data stream), `<>"|?*`, and
+  names that end in a dot or a space (Windows strips those, so `.. ` would become `..`).
+- 7-Zip, FFmpeg and rpycdec run without a console window popping up.
+- 7-Zip lists names in UTF-8 (`-sccUTF-8`), not in the console code page.
+- Read-only files from an archive are deleted with the temp folder.
+- Report text the console code page cannot show (a Japanese title in a redirected
+  `cp1252` console, for example) prints as `?` instead of stopping the importer.
+- Paths longer than 260 characters need Windows' long-path setting (`LongPathsEnabled`);
+  the importer does not work around it.
+
+## Tools
+
+`7z`, `ffprobe` and `ffmpeg` are searched for in this order:
+1. the `--tools` folder (in the window: *Tools folder…*);
+2. `PATH` (on Windows, with `.exe` added);
+3. the usual install places: `/opt/homebrew/bin`, `/usr/local/bin`, and
+   `C:\Program Files\7-Zip`. An app started from the macOS Finder only gets
+   `/usr/bin:/bin:/usr/sbin:/sbin` as `PATH`, so Homebrew tools are found through these.
+
+Missing 7-Zip only matters for `.7z`/`.rar` files. Missing `ffprobe` leaves videos unchecked,
+with a warning. Missing `ffmpeg` means `--optimize` copies videos unchanged and notes it.
+
+The tools are not bundled with the app. FFmpeg (LGPL or GPL, depending on the build) and
+7-Zip (LGPL, plus the unRAR licence terms) have their own licences, and installing them
+separately keeps those terms off the app and lets users update them.
+
+## Building the app
+
+For people without Python, PyInstaller turns the window into one program:
+
+```bash
+python -m pip install pyinstaller
+```
+
+```bash
+python importer/build_app.py
+```
+
+- On Windows: `dist\importer\RSL Importer.exe`, a single file.
+- On macOS: `dist/importer/RSL Importer.app` (29 MB; built with uv's Python 3.12 and Tk 9.0,
+  launched on macOS 15.7). Build with a Python whose Tk is 8.6 or newer (python.org, uv,
+  Homebrew), not `/usr/bin/python3`.
+- PyInstaller does not cross-compile: build the `.exe` on Windows and the `.app` on a Mac.
+- Build files go to `build-test/pyinstaller/`. Both folders are git-ignored.
+- The app is not signed. Windows SmartScreen shows "Windows protected your PC": click *More
+  info*, then *Run anyway*. On macOS, right-click the app and choose *Open* the first time.
 
 ## What gets exported
 
@@ -113,7 +215,7 @@ It does not export `unsupported` games, because no runtime could start them.
   "reasons": [], "warnings": ["..."],
   "files": {"count": 172, "total_bytes": 10637851, "rpa": 0, "rpy": 52, "rpyc": 52, "rpym": 1},
   "media": {".opus": 1},
-  "recompile": false,
+  "recompile": false, "decompiled": [],
   "performance": {"issues": ["..."], "converted": {"gui/splash.webm": "vp9"},
                   "coverage": {"loose_media": 3190, "archived_media": 0, "locked_archives": []}},
   "sha256": {"script.rpyc": "…"}
@@ -123,6 +225,7 @@ It does not export `unsupported` games, because no runtime could start them.
 - `reasons` explains why a game is `unsupported`.
 - `sha256` lists every `.rpa` and `.rpyc`, by path relative to `game/`.
 - `recompile` is `true` for a `--recompile` export.
+- `decompiled` lists the `.rpy` files that `--decompile` rebuilt (paths relative to `game/`).
 - The loader reads `status`, `runtime`, `renpy_version`, `recompile` and `reasons[0]`:
   - its Game Library shows each game's Ren'Py version, status, runtime, and whether that
     runtime is installed;
@@ -184,9 +287,48 @@ folder is not changed.
 The importer refuses recompile mode when:
 - the game is not Python 2;
 - it has `.rpa` archives, which may hold compiled scripts;
-- a `.rpyc` outside `tl/` has no `.rpy` source.
+- a `.rpyc` outside `tl/` has no `.rpy` source, unless `--decompile` is given. The refusal
+  says how to install rpycdec.
 
-Sourceless `.rpyc` under `tl/` are left out with a warning: those translations may be missing.
+Without `--decompile`, sourceless `.rpyc` under `tl/` are left out with a warning: those
+translations may be missing.
+
+### Decompile (`--decompile`)
+
+For Ren'Py 7 games that ship only `.rpyc` (some or all scripts have no `.rpy`).
+`--recompile --decompile` rebuilds a `.rpy` for every `.rpyc`/`.rpymc` that has no source,
+including those under `tl/`. It uses [rpycdec](https://github.com/cnfatal/rpycdec) (MIT).
+Install it yourself:
+
+```bash
+pip install rpycdec
+```
+
+rpycdec needs Python 3.10+, so it does not run on `/usr/bin/python3`. The importer finds the
+`rpycdec` command on `PATH`, or runs `PYTHON -m rpycdec` when given `--rpycdec-python PYTHON`.
+
+```bash
+python3 importer/rsl_import.py OldGame --recompile --decompile --out /Volumes/SD
+```
+
+How it is kept apart from the importer:
+- rpycdec unpickles the `.rpyc` files with a restricted unpickler, and its README warns that
+  no safeguard is perfect. So it never runs inside the importer. The importer copies only the
+  sourceless `.rpyc` into its temp folder and runs `rpycdec decompile` on that folder as a
+  separate process (stdin closed, `RPYCDEC_TIMEOUT` = 600 s). The working directory holds only
+  the copies.
+- The source game is never touched. The rebuilt `.rpy` are exported, and every `.rpyc` is
+  still left out.
+- `.rpyc` that have a `.rpy` source are not decompiled.
+- If rpycdec fails on any file, or does not finish in time, the import is refused.
+- Only scripts are decompiled. Archives are not touched: recompile mode still refuses any game
+  with `.rpa` archives. There is no decryption, and rpycdec's save tools (including save
+  re-signing) are not used.
+
+Decompiled scripts may differ from the originals. Comments and formatting are lost, and
+rpycdec can misread statements. The manifest lists the rebuilt files under `decompiled`, and a
+warning says the same. A second warning names files with statements rpycdec did not
+recognise; it leaves those as comments. Play the whole game to check.
 
 It is an experiment, not support:
 - Python 2 code can behave differently under Python 3 **without any error**. For example,
@@ -202,6 +344,7 @@ Every archive is checked before anything is written. It is then unpacked into a 
 folder, which is deleted afterwards. The importer refuses an archive that has:
 
 - an absolute path, a drive letter, or a `..` component;
+- on Windows, a name Windows cannot create as written (see "Windows setup");
 - a password;
 - a symlink that points outside the archive. A zip symlink inside the archive is skipped with
   a warning. A `.7z`/`.rar` file with any link is refused, because 7z gives no link target
@@ -225,9 +368,14 @@ The limits are constants at the top of `rsl_import.py`.
 - Scripts inside `.rpa` are not inspected; only images and videos are. A game that ships
   only `.rpa` and no `renpy/` folder may have an unknown Python generation, which makes it
   `unsupported`.
-- `--recompile` needs `.rpy` sources. Ren'Py 7 games that ship only `.rpyc` are refused (a
-  decompiler such as rpycdec could be added as an optional step).
+- `--recompile` needs `.rpy` sources. For Ren'Py 7 games that ship only loose `.rpyc`, add
+  `--decompile` (needs rpycdec). Scripts inside `.rpa` archives cannot be recompiled at all.
 - The Python modules in `game/` are not scanned for imports of modules the Switch lacks.
 - The media check only looks at file extensions. The runtime's FFmpeg codec list is not
   confirmed on hardware.
-- Run the tests with `/usr/bin/python3 -m unittest tests/unit/test_importer.py`.
+- Windows support is tested on macOS with Windows faked (`WINDOWS`, `ntpath`, a `cp1252`
+  console, mocked tool calls), not yet on a Windows machine.
+- Run the tests with `/usr/bin/python3 -m unittest tests/unit/test_importer.py
+  tests/unit/test_importer_gui.py`. The window tests are skipped under Apple's Tk 8.5;
+  run them with a python.org or uv Python. On Windows:
+  `py -m unittest tests\unit\test_importer.py tests\unit\test_importer_gui.py`.
