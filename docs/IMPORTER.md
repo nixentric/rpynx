@@ -56,38 +56,66 @@ The Question  (id: the-question)
 
 ## Desktop window
 
+The window is a web page (`importer/rsl_import_gui.html`) shown by pywebview in the
+system's own web view: WebKit on macOS, Edge WebView2 on Windows. The page calls the `Api`
+class in `importer/rsl_import_gui.py`, which only calls `rsl_import.py`; every check and copy
+is the importer's. pywebview is the only package the window needs; the command line needs
+none.
+
+```bash
+python3 -m pip install pywebview
+```
+
 ```bash
 python3 importer/rsl_import_gui.py
 ```
 
-On Windows: `py importer\rsl_import_gui.py`, or double-click `RSL Importer.exe`. The window
-only collects options and shows results; every check and copy is `rsl_import.py`'s.
+On Windows: `py -m pip install pywebview`, then `py importer\rsl_import_gui.py`. Or use the
+built app, which needs no Python at all (see "Building the app").
 
-1. **Game**: *Folder…* or *Archive…* (`.zip`, `.7z`, `.rar`).
-2. **Options**: *Optimize* is `--optimize`, *Recompile* is `--recompile`, *Game id* is
-   `--id` (blank: made from the title). Changing an option or the game clears the report:
-   analyze again before exporting.
-3. **Tools** shows whether 7-Zip, `ffprobe` and `ffmpeg` were found. *Tools folder…* is
-   `--tools`.
-4. **Analyze** shows the same report as the command line: status, Ren'Py version, warnings,
-   Switch performance issues, and the `Checked:` line (loose, archived and locked assets).
-5. **SD card**: its top folder, `E:\` on Windows or `/Volumes/<name>` on macOS. *Replace* is
-   `--replace`.
-6. **Export** copies file by file with a progress bar. Re-encoding a video can take minutes,
-   and the status line says so. **Cancel** stops after the current file: the half-made copy
-   is removed, and an existing export stays as it was.
+- **Library** lists the games already on the SD card (`switch/renpy-loader/games/<id>/`),
+  read from each `manifest.json`. Click a card for its report. The status chip is:
+  - *Experimental*: no warnings and no Switch performance issues;
+  - *Review*: experimental, with warnings or performance issues to read first;
+  - *Unsupported*: the manifest's `reasons` say why;
+  - *No manifest*: copied by hand, or not by this importer.
+
+  Covers are placeholders: the importer does not extract cover art yet.
+- **Import**:
+  1. Drop a game folder, `.zip`, `.7z` or `.rar` on the window, or use *Choose folder…* /
+     *Choose archive…*. It is analyzed at once.
+  2. Options: *Optimize* is `--optimize`, *Recompile* is `--recompile`, *Game id* is `--id`
+     (blank: made from the title). Changing one clears the report; press *Analyze* again.
+     When the analysis finds something an option fixes (videos above 30 fps; a Ren'Py 7 game
+     with its `.rpy` sources), an alert under that option says why, and its *Turn on* button
+     ticks the option and analyzes again. The importer decides this (`suggested_options`).
+  3. *Tools* shows whether 7-Zip, `ffprobe` and `ffmpeg` were found. *Tools folder…* is
+     `--tools`.
+  4. The report is the command line's: status, Ren'Py version, warnings, Switch
+     performance issues, and the `Checked:` line (loose, archived and locked assets).
+  5. *Replace* is `--replace`. *Export* copies file by file with a progress bar. Re-encoding a
+     video can take minutes, and the status line says so. *Cancel* stops after the current
+     file: the half-made copy is removed, and an existing export stays as it was. Closing the
+     window during an export does the same before the program quits.
+- **SD card**: choose its top folder, `E:\` on Windows or `/Volumes/<name>` on macOS. A
+  mounted drive that already has a `switch/` folder is offered, and chosen if it is the
+  only one.
 
 Export is disabled for `unsupported` games. `--decompile` is only on the command line.
 
-macOS: Apple's `/usr/bin/python3` comes with Tk 8.5, which aborts the whole process on
-current macOS (seen on 15.7). The window refuses to start there and says why. Use the built
-app, Python from python.org, or `brew install python-tk`. The command line still works with
-`/usr/bin/python3`.
+Text from a game (title, report, paths) is put on the page as plain text, never as HTML: a
+title in `options.rpy` cannot inject script into a page that can export.
+
+On macOS's `/usr/bin/python3` (3.9), `pip` may pick a yanked `pyobjc` 12.0 and compile it,
+which needs the Xcode Command Line Tools. It worked here, but the built app or Python 3.10+
+from python.org avoids that.
 
 ## Windows setup
 
 1. Either use `RSL Importer.exe` (no Python needed), or install Python 3.9+ from
-   python.org. Keep "tcl/tk and IDLE" ticked in its installer; that is the window toolkit.
+   python.org and then `py -m pip install pywebview`. The window uses Microsoft Edge
+   WebView2, which Windows 11 has; on Windows 10, install the "Evergreen" WebView2 Runtime
+   from Microsoft if the window does not open.
 2. 7-Zip, from 7-zip.org. It is found in `C:\Program Files\7-Zip` without further setup.
 3. FFmpeg. `winget install Gyan.FFmpeg` puts it on `PATH`. Or unzip a build linked from
    ffmpeg.org and choose its `bin` folder with *Tools folder…* (`--tools C:\ffmpeg\bin`).
@@ -127,7 +155,7 @@ separately keeps those terms off the app and lets users update them.
 For people without Python, PyInstaller turns the window into one program:
 
 ```bash
-python -m pip install pyinstaller
+python -m pip install pyinstaller pywebview
 ```
 
 ```bash
@@ -135,9 +163,10 @@ python importer/build_app.py
 ```
 
 - On Windows: `dist\importer\RSL Importer.exe`, a single file.
-- On macOS: `dist/importer/RSL Importer.app` (29 MB; built with uv's Python 3.12 and Tk 9.0,
-  launched on macOS 15.7). Build with a Python whose Tk is 8.6 or newer (python.org, uv,
-  Homebrew), not `/usr/bin/python3`.
+- On macOS: `dist/importer/RSL Importer.app` (24 MB; built with Python 3.12, PyInstaller and
+  pywebview 6.2.1, launched on macOS 15.7).
+- The page, `rsl_import_gui.html`, is bundled as data; PyInstaller's pywebview hook adds
+  pywebview's own scripts.
 - PyInstaller does not cross-compile: build the `.exe` on Windows and the `.app` on a Mac.
 - Build files go to `build-test/pyinstaller/`. Both folders are git-ignored.
 - The app is not signed. Windows SmartScreen shows "Windows protected your PC": click *More
@@ -216,6 +245,7 @@ It does not export `unsupported` games, because no runtime could start them.
   "files": {"count": 172, "total_bytes": 10637851, "rpa": 0, "rpy": 52, "rpyc": 52, "rpym": 1},
   "media": {".opus": 1},
   "recompile": false, "decompiled": [],
+  "suggested_options": {"optimize": "1 videos above 30 fps (gui/splash.webm): re-encoding them …"},
   "performance": {"issues": ["..."], "converted": {"gui/splash.webm": "vp9"},
                   "coverage": {"loose_media": 3190, "archived_media": 0, "locked_archives": []}},
   "sha256": {"script.rpyc": "…"}
@@ -225,6 +255,12 @@ It does not export `unsupported` games, because no runtime could start them.
 - `reasons` explains why a game is `unsupported`.
 - `sha256` lists every `.rpa` and `.rpyc`, by path relative to `game/`.
 - `recompile` is `true` for a `--recompile` export.
+- `suggested_options` names the importer options that would fix something found, each with
+  why. `optimize`: videos above 30 fps that `--optimize` can re-encode (not alpha, a codec it
+  has an encoder for). `recompile`: a Python 2 game whose every `.rpy` source is there and
+  that has no `.rpa` (what `--recompile` needs). It is empty once the option is on. The
+  report prints it as `Suggested: --optimize: …`, and the window shows it as an alert under
+  that option.
 - `decompiled` lists the `.rpy` files that `--decompile` rebuilt (paths relative to `game/`).
 - The loader reads `status`, `runtime`, `renpy_version`, `recompile` and `reasons[0]`:
   - its Game Library shows each game's Ren'Py version, status, runtime, and whether that
@@ -375,7 +411,9 @@ The limits are constants at the top of `rsl_import.py`.
   confirmed on hardware.
 - Windows support is tested on macOS with Windows faked (`WINDOWS`, `ntpath`, a `cp1252`
   console, mocked tool calls), not yet on a Windows machine.
+- The window has run on macOS only. On Windows, its WebView2 backend (via pythonnet) and the
+  one-file `.exe` are untested.
 - Run the tests with `/usr/bin/python3 -m unittest tests/unit/test_importer.py
-  tests/unit/test_importer_gui.py`. The window tests are skipped under Apple's Tk 8.5;
-  run them with a python.org or uv Python. On Windows:
+  tests/unit/test_importer_gui.py`. The window tests drive `Api` without a window, so they
+  need no pywebview. On Windows:
   `py -m unittest tests\unit\test_importer.py tests\unit\test_importer_gui.py`.

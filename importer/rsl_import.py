@@ -618,7 +618,8 @@ def extract_member(gamedir, member, target):
 
 def performance(gamedir, files, warnings, optimize, workdir=None):
     """What would load the Switch. Returns (remaining issues, {video: codec} to re-encode,
-    {archived video: extracted copy} to export loose, asset coverage)."""
+    {archived video: extracted copy} to export loose, asset coverage, the videos that
+    --optimize would re-encode if it were on)."""
     issues, convert, extra = [], {}, {}
     archived, locked = archive_media(gamedir, files, workdir, warnings)
     images = [(r, os.path.join(gamedir, r)) for r, _ in files if r.lower().endswith(IMAGE_EXTS)]
@@ -647,8 +648,8 @@ def performance(gamedir, files, warnings, optimize, workdir=None):
     if videos and not ffprobe:
         warnings.append("%d videos not checked: install FFmpeg (ffprobe) or choose its folder "
                         "(--tools) to check their size and frame rate for the Switch" % len(videos))
-        return issues, convert, extra, coverage
-    fast, large, huge, heavy, unfixable = [], [], [], [], []
+        return issues, convert, extra, coverage, []
+    fast, large, huge, heavy, unfixable, would_fix = [], [], [], [], [], []
     for rel, path, member in videos:
         if member:   # probe a temporary copy; keep it only if it gets re-encoded
             path = os.path.join(workdir or tempfile.gettempdir(), "rpa-media", *rel.split("/"))
@@ -656,7 +657,8 @@ def performance(gamedir, files, warnings, optimize, workdir=None):
         v = probe_video(ffprobe, path)
         if not v:
             continue
-        fixable = optimize and v["fps"] > MAX_VIDEO_FPS + 0.5 and v["codec"] in ENCODERS and not v["alpha"]
+        can_fix = v["fps"] > MAX_VIDEO_FPS + 0.5 and v["codec"] in ENCODERS and not v["alpha"]
+        fixable = optimize and can_fix
         # Label what the export will hold: a re-encoded video is MAX_VIDEO_FPS.
         fps = "%d fps (was %.0f)" % (MAX_VIDEO_FPS, v["fps"]) if fixable else "%.0f fps" % v["fps"]
         label = "%s%s %dx%d %s %s" % (rel, " (in %s)" % member[0] if member else "",
@@ -670,6 +672,8 @@ def performance(gamedir, files, warnings, optimize, workdir=None):
                 convert[rel] = v["codec"]
             else:
                 (unfixable if optimize else fast).append(label)
+            if can_fix and not optimize:
+                would_fix.append(rel)
         if v["width"] * v["height"] > DOCKED_SCREEN[0] * DOCKED_SCREEN[1]:
             huge.append(label)
         elif v["width"] * v["height"] > SWITCH_SCREEN[0] * SWITCH_SCREEN[1]:
@@ -698,7 +702,7 @@ def performance(gamedir, files, warnings, optimize, workdir=None):
     if extra:
         warnings.append("%d of them come from archives and are exported as loose files, which Ren'Py "
                         "loads before the archive copy" % len(extra))
-    return issues, convert, extra, coverage
+    return issues, convert, extra, coverage, would_fix
 
 
 def reencode(source, target, codec):
@@ -848,6 +852,7 @@ def analyze(root, kind, source, game_id=None, extract_warnings=(), recompile=Fal
     if recompile and python != "2":
         raise Refused("--recompile is only for Python 2 games (Ren'Py 7 or older)")
     decompiled = {}
+    suggest = {}   # importer options that would fix something found here, with why
     if recompile:
         files, orphans = recompile_files(files, warnings, decompile)
         if orphans:
@@ -856,6 +861,12 @@ def analyze(root, kind, source, game_id=None, extract_warnings=(), recompile=Fal
     elif python == "2":
         reasons.append("%s uses Python 2; there is no Python 2 runtime yet (try --recompile if it "
                        "ships its .rpy sources, with --decompile if not)" % ("Ren'Py " + version if vt else "this game"))
+        try:
+            recompile_files(files, [])
+            suggest["recompile"] = ("a Python 2 game that ships all its .rpy sources: Ren'Py 8.5.3 can "
+                                    "compile them with Python 3, so it can be exported (an experiment)")
+        except Refused:
+            pass   # .rpa archives or sourceless scripts: the reason above says what to try
     exts = {}
     for rel, _ in files:
         ext = os.path.splitext(rel)[1].lower()
@@ -891,7 +902,11 @@ def analyze(root, kind, source, game_id=None, extract_warnings=(), recompile=Fal
     midi = [r for r, _ in files if r.lower().endswith(NO_PLAY_EXTS)]
     if midi:
         warnings.append("Ren'Py cannot play MIDI: %s" % examples(midi))
-    issues, convert, extra, coverage = performance(gamedir, files, warnings, optimize, workdir)
+    issues, convert, extra, coverage, would_fix = performance(gamedir, files, warnings, optimize, workdir)
+    if would_fix:
+        suggest["optimize"] = ("%d videos above %d fps (%s): re-encoding them at %d fps, same size, "
+                               "saves the Switch CPU work and heat" % (len(would_fix), MAX_VIDEO_FPS,
+                                                                       examples(would_fix, 2), MAX_VIDEO_FPS))
     extra.update(decompiled)
     big =[r for r, s in files if s >= LARGE_FILE_BYTES]
     if big:
@@ -933,6 +948,7 @@ def analyze(root, kind, source, game_id=None, extract_warnings=(), recompile=Fal
                   "rpyc": exts.get(".rpyc", 0), "rpym": exts.get(".rpym", 0)},
         "media": dict(sorted(media.items())),
         "recompile": recompile,
+        "suggested_options": suggest,
         "decompiled": sorted(decompiled),
         "performance": {"issues": issues, "converted": convert, "coverage": coverage},
         "sha256": {rel: sha256(os.path.join(gamedir, rel)) for rel, _ in files
@@ -1048,6 +1064,7 @@ def report(m):
     issues = m["performance"]["issues"]
     lines.append("  Switch performance: %s" % ("%d issue(s), shown in the loader" % len(issues) if issues else "OK"))
     lines += ["    ! " + i for i in issues]
+    lines += ["  Suggested: --%s: %s" % kv for kv in m.get("suggested_options", {}).items()]
     return "\n".join(lines)
 
 

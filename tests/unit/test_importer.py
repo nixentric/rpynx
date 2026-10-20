@@ -161,6 +161,7 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual(m["renpy_version"], "8.5.3.26051504")
         self.assertEqual((m["python"], m["runtime"], m["status"]), ("3", "renpy-8.5.3", "experimental"))
         self.assertEqual(m["reasons"], [])
+        self.assertEqual(m["suggested_options"], {})
         self.assertEqual(m["source"], {"type": "directory", "name": "FakeQuest-1.0-pc"})
         self.assertEqual(m["files"]["rpyc"], 1)
         self.assertEqual(m["files"]["rpy"], 2)
@@ -215,6 +216,7 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual((m["renpy_version"], m["python"]), ("7.4.11", "2"))
         self.assertEqual((m["status"], m["runtime"]), ("unsupported", None))
         self.assertTrue(m["reasons"])
+        self.assertEqual(list(m["suggested_options"]), ["recompile"], "it ships its .rpy sources")
         code, stdout, err = self.run_cli(src, "--out", self.path("sd"))
         self.assertEqual(code, 1)
         self.assertIn("UNSUPPORTED", stdout)
@@ -261,6 +263,7 @@ class ImporterTest(unittest.TestCase):
         self.assertIn(".rpa archives", err)
         m, _, _ = self.analyze_dir(orphan)
         self.assertIn("try --recompile", m["reasons"][0])
+        self.assertEqual(m["suggested_options"], {}, "--recompile refuses games with .rpa archives")
 
     @unittest.skipUnless(shutil.which("rpycdec"), "rpycdec not installed")
     def test_decompile_sourceless_py2_game(self):
@@ -392,6 +395,8 @@ class ImporterTest(unittest.TestCase):
         self.assertIn("2 videos above the 1280x720 handheld screen (video/big.mp4", text)
         self.assertIn("1 images exceed the Switch GPU's 4096x4096 texture limit", text)
         self.assertEqual(m["performance"]["converted"], {})
+        self.assertEqual(list(m["suggested_options"]), ["optimize"])
+        self.assertIn("1 videos above 30 fps (video/fast.webm)", m["suggested_options"]["optimize"])
 
         out = self.path("sd")
         code, stdout, err = self.run_cli(src, "--out", out, "--optimize")
@@ -400,6 +405,7 @@ class ImporterTest(unittest.TestCase):
         with open(os.path.join(dest, "manifest.json"), encoding="utf-8") as f:
             m = json.load(f)
         self.assertEqual(m["performance"]["converted"], {"video/fast.webm": "vp9"})
+        self.assertEqual(m["suggested_options"], {}, "already optimized")
         self.assertNotIn("above 30 fps", "\n".join(m["performance"]["issues"]))
         self.assertIn("video/fast.webm 1296x720 vp9 30 fps (was 60)", "\n".join(m["performance"]["issues"]))
         v = imp.probe_video(shutil.which("ffprobe"), os.path.join(dest, "game", "video", "fast.webm"))
