@@ -3,9 +3,10 @@
 A Nintendo Switch homebrew loader (`.nro`) meant to run legally obtained, DRM-free Ren'Py
 games from the SD card, with a first-class remappable controller system.
 
-**Status: Milestones 1–3 done; Milestone 4 (Ren'Py 8.5.3 engine) builds and passes a desktop
-integration test. Nothing has run on a Switch yet.** See [BUILD_STATUS.md](BUILD_STATUS.md)
-for what is built, tested and hardware-verified (currently: nothing hardware-verified).
+**Status: Ren'Py 8.5.3 runs on a real Switch.** "The Question" starts, renders with GLES 3.2
+and quits cleanly (hardware run 5), and games exported by the macOS importer launch from the
+loader's library (run 9). Audio, saves, suspend and touch are still unverified on hardware.
+See [BUILD_STATUS.md](BUILD_STATUS.md) for what is built, tested and hardware-verified.
 
 ## Build (macOS Apple Silicon or Linux)
 

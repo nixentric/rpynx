@@ -1,4 +1,4 @@
-# Main menu focus (rsl_bridge._focus_main_menu): the top button is selected
+# Main menu focus (rsl_bridge._focus_first_button): the top button is selected
 # when the main menu appears, without a first D-pad press.
 init python:
     def report_focus():

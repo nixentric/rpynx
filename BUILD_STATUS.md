@@ -6,15 +6,15 @@ Last updated: 2026-10-19
 
 | Milestone | State |
 |---|---|
-| 1 Toolchain | Code complete, builds. **HARDWARE UNVERIFIED** |
-| 2 Input system | Code complete, host-tested. **HARDWARE UNVERIFIED** |
-| 3 Python runtime | Static CPython 3.12.8 cross-builds; runtime `.nro` links and runs a self-test. **HARDWARE UNVERIFIED** |
-| 4 Ren'Py engine | Ren'Py 8.5.3 builds and links into the runtime. Library → Launch is wired. The controller bridge passes 24/24 checks on desktop against the official engine. **HARDWARE UNVERIFIED** |
+| 1 Toolchain | Code complete, builds. On a Switch: the loader and runtime `.nro` start and chain-load each other both ways (run 1) |
+| 2 Input system | Code complete, host-tested. On a Switch: handheld controls drive the loader's menus (run 1); in games the D-pad, A and the virtual cursor pick buttons (runs 16, 18). Remapping, profiles, the emergency combo, touch, docked play and controller reconnect: **HARDWARE UNVERIFIED** |
+| 3 Python runtime | Static CPython 3.12.8 cross-builds; runtime `.nro` links. On a Switch the self-test finishes in 2 s with 66/66 required imports, threads and `os.urandom`; one check fails: creating a non-ASCII file name on `sdmc:` (run 4) |
+| 4 Ren'Py engine | Ren'Py 8.5.3 builds, links and runs on a Switch: The Question (run 5), and Forbidden Fantasy, a Ren'Py 7 game recompiled on the console (run 13). Quit returns to the loader (run 7); three games in a row run in one process (run 12). The controller bridge passes 26/26 desktop checks against the official engine. Audio, saves, suspend and touch: **HARDWARE UNVERIFIED**. Applet mode crashed the console (run 8); its fix is not retested |
 | 5 Importer | macOS importer: folder/ZIP/7z/RAR → compatibility report, `manifest.json`, SD export. Host-tested (25 tests). Its export of The Question launched on a Switch (run 9) |
 
 **Ren'Py 8.5.3 runs on a real Switch** (2026-10-18, run 5): "The Question" starts, renders
-with GLES 3.2 on nouveau, shows dialogue and quits cleanly. Audio, saves, suspend, touch
-and the cursor are still unverified on hardware. See
+with GLES 3.2 on nouveau, shows dialogue and quits cleanly. Audio, saves, suspend and touch
+are still unverified on hardware. See
 [tests/hardware/results](tests/hardware/results/).
 
 ## Implemented
@@ -50,7 +50,7 @@ and the cursor are still unverified on hardware. See
   (`logs/<id>`) and controller profile; GLES2 renderer. See `runtime/renpy/README.md`.
 - Controller bridge: logical actions → Ren'Py pad events or named events. The virtual
   cursor drives Ren'Py's mouse with a software cursor. Ren'Py's own SDL pad support is off.
-- Static CPython 3.12.8 (5 small patches, documented in `runtime/python/README.md`) with 69
+- Static CPython 3.12.8 (6 small patches, documented in `runtime/python/README.md`) with 69
   built-in extension modules.
 - Stdlib compiled to sourceless `.pyc` in RomFS.
 - Python runs on an 8 MiB-stack thread while the main thread keeps servicing applet events.
@@ -136,7 +136,7 @@ switch-bzip2 1.0.8, switch-liblzma 5.8.2.
 |---|---|---|---|---|---|
 | `scripts/test.sh` (151 checks) | macOS host, Apple clang, ASan + UBSan | n/a | all pass | 151/151 | PASS |
 | `runtime/python/selftest.py` against `python312.zip` only | Linux arm64 container, host CPython 3.12.8 | CPython 3.12.8 | 0 required failures | 0 failures (66 required checks) | PASS (host only) |
-| `tests/unit/test_posixpath_horizon.py` | Linux arm64 container, host CPython 3.12.8 | patched posixpath | 22 checks | 22 pass | PASS (host only) |
+| `tests/unit/test_horizon_paths.py` | Linux arm64 container, host CPython 3.12.8 | patched posixpath | 22 checks | 22 pass | PASS (host only) |
 | `tests/integration/renpy_desktop/run.sh` | Linux arm64 container, Xvfb + Mesa llvmpipe 22.3.6, GLES 3.2 | **official** Ren'Py 8.5.3 SDK + our `switch_main.py`/`rsl_bridge.py`, scripted `_rslnx` | 24 checks | 24 pass; screenshots in `build-test/out/` | PASS (desktop only) |
 | `tests/unit/test_importer.py` (25 tests, part of `scripts/test.sh`) | macOS host, `/usr/bin/python3` 3.9.6 | n/a | all pass | 25/25 | PASS |
 
@@ -185,16 +185,24 @@ itself. It does not prove anything about Horizon.
   - Cause: SDL's timer thread from the runtime outlives it. `SDL_Quit()` does not stop a
     timer thread that `SDL_AddTimer` started without `SDL_INIT_TIMER`.
   - Fix in runtime `fed4dc1b…`: `quit_sdl()` takes a timer reference so SDL joins the thread.
-    It is on the console, not retested yet.
+    Run 10: PASS, the loader stayed up 76 s after the game.
 
-Everything else below remains unverified.
+**Runs 10–19** (recorded in the [run 9](tests/hardware/results/2026-10-19-run9.md),
+[run 13](tests/hardware/results/2026-10-19-run13.md) and
+[run 14](tests/hardware/results/2026-10-19-run14.md) files):
+- PASS: every pthread is closed at runtime exit, so three games in a row and Exit to the
+  Homebrew Menu run in one process without a crash (run 12).
+- PASS: Forbidden Fantasy (Ren'Py 7.5.3, exported with `--recompile`) compiles its scripts on
+  the console and renders (run 13).
+- PASS: cards and choices are picked with the D-pad and A (run 18). The run 19 fix to
+  button selection is on the console but has no hardware result yet.
 
-**HARDWARE UNVERIFIED.** Neither `.nro` has run on a Switch or an emulator. Untested on device:
-- launch, rendering, button and stick reading, touch;
-- SD writes, sleep/resume, controller reconnect, docked mode;
-- chain-loading;
-- Python start-up, threads, `os.urandom`, filesystem, memory limits;
-- Ren'Py start-up, GLES on nouveau, audio, video, saves, suspend during play.
+**HARDWARE UNVERIFIED** (no result in any run):
+- controls and console: remapping, profiles and the emergency combo (H9–H14, H35), touch (H7, H29),
+  sleep/resume (H16, H25, H32), controller reconnect (H17), docked mode (H18);
+- Python: non-ASCII file names on `sdmc:` fail (run 4) and are not investigated yet;
+- Ren'Py: audio (H30), save/reload (H31), smooth video playback (run 13), applet mode after
+  the run 8 crash (H34), the full Switch keyboard (run 17 build).
 
 Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H35.
 

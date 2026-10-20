@@ -29,8 +29,15 @@ Homebrew Menu, because chain-loading goes through the Homebrew loader.
 
 ## Games
 
-Not runnable yet (Milestones 4–5). The library already lists folders under `games/` and flags
-those without a `game/` subfolder.
+Add games with the macOS importer (`importer/rsl_import.py`, see [IMPORTER.md](IMPORTER.md)).
+It checks a DRM-free Ren'Py game and exports `games/<id>/game/` with a `manifest.json` to the
+SD card. Ren'Py 8 games are `experimental`; Ren'Py 7 / Python 2 games are `unsupported` unless
+exported with `--recompile`.
+
+The Game Library shows each game's Ren'Py version, status and runtime, and marks games with
+Switch performance issues (`!`). Launch starts the game's runtime. The loader refuses
+`unsupported` games, games whose runtime is missing, and folders without a `game/` subfolder.
+A game copied by hand without a manifest uses the default runtime.
 
 ## Controls
 
