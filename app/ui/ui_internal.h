@@ -1,6 +1,5 @@
-/* Internal to app/ui: what the screen files share. ui.c holds the helpers,
- * fonts, styles and the screen frame; ui_library.c the library, covers and
- * game details; ui_controls.c controller settings, controller test and
+/* Internal to app/ui: what its files share, grouped below by the file that
+ * defines it. ui_controls.c has controller settings, controller test and
  * diagnostics; ui_pages.c how to play and the Layout page. */
 #ifndef RSL_UI_INTERNAL_H
 #define RSL_UI_INTERNAL_H
@@ -79,6 +78,9 @@ struct ui_screen {
     lv_obj_t *covers[MAX_GAMES], *info, *backdrop;                /* library */
     int backdrop_sel, sel_seen;
     uint32_t sel_at;
+    lv_obj_t *shade[2], *frame, *shot_text;                       /* picture page */
+    int crop_drawn;
+    unsigned shot_drawn;
     lv_obj_t *values[ROW_COUNT], *capture, *profile, *preset, *unsaved;  /* remap */
     uint32_t row_sig[RSL_ACT_COUNT];
     lv_obj_t *btn[RSL_BTN_NAV_UP], *act[RSL_ACT_COUNT], *dot[2], *stick_val[2], *events, *pad;
@@ -89,19 +91,25 @@ struct ui_screen {
     int hue_drawn, bg_drawn;
 };
 
-/* ui.c */
+/* ui.c: the screen frame, building and updating screens */
 extern struct ui_screen u;
-extern const lv_font_t *f_s, *f_m, *f_l, *f_xl, *f_hero;
-extern const lv_font_t *f_icon, *f_icon_big;     /* the console's button icons; NULL on the host */
-extern char icon[RSL_BTN_NAV_UP][4];              /* UTF-8 of each button's icon, "" if none */
-extern lv_style_t st_screen, st_card, st_pill, st_focusable, st_focus, st_grow, st_grow_row, st_row,
-                  st_focus_fill, st_button, st_chip, st_toggle, st_toggle_on, st_title_focus, st_icon_on;
 extern const char *const action_label[RSL_ACT_COUNT];
 extern const char *const preset_label[RSL_PRESET_COUNT];
 extern const char *const layout_name[LAYOUT_COUNT];
-extern const struct accent_preset presets[ACCENT_PRESETS];
+lv_obj_t *screen(const char *title, const hint *h, int n);
 
-/* ui.c: building blocks */
+/* ui_style.c: fonts, shared styles, the accent */
+extern const lv_font_t *f_s, *f_m, *f_l, *f_xl, *f_hero;
+extern const lv_font_t *f_icon, *f_icon_big;     /* the console's button icons; NULL on the host */
+extern char icon[RSL_BTN_NAV_UP][4];              /* UTF-8 of each button's icon, "" if none */
+extern char stick_icon[2][4];                     /* the left and right stick's */
+extern lv_style_t st_screen, st_card, st_pill, st_focusable, st_focus, st_grow, st_grow_row, st_row,
+                  st_focus_fill, st_button, st_chip, st_toggle, st_toggle_on, st_title_focus, st_icon_on;
+extern const struct accent_preset presets[ACCENT_PRESETS];
+void style_init(const void *ttf, size_t ttf_len, const void *icons, size_t icons_len);
+void set_accent(void);
+
+/* ui_widgets.c: building blocks, touch */
 lv_obj_t *box(lv_obj_t *parent);
 lv_obj_t *flex(lv_obj_t *parent, lv_flex_flow_t flow, int gap);
 lv_obj_t *label(lv_obj_t *parent, const lv_font_t *font, uint32_t color, const char *text);
@@ -125,16 +133,33 @@ int key(int a);
 lv_obj_t *button_chip(lv_obj_t *parent, const rsl_input_config *c, int b);
 void hints(lv_obj_t *row, const hint *h, int n);
 void make_room(lv_obj_t *o);
-lv_obj_t *screen(const char *title, const hint *h, int n);
+void tappable_item(lv_obj_t *o, int i);
 
-/* ui_library.c */
+/* ui_art.c: covers and backdrops */
+extern lv_draw_buf_t *thumb[MAX_GAMES];           /* grid covers, NULL until decoded or without one */
+const char *title_of(int i);
 uint32_t tint(int i);
+void paint(lv_draw_buf_t *dst, const void *src, int32_t scale, const lv_area_t *a);
+lv_obj_t *cover(lv_obj_t *parent, int i, int w, int h, lv_draw_buf_t *buf);
+lv_draw_buf_t *detail_cover(int i);
 void load_next_thumb(void);
-void row_info(void);
 void render_backdrop(int i);
+void backdrop_under(lv_obj_t *s);
+void art_init(void);
+
+/* ui_library.c: the library layouts, the + menu */
+void side_menu(lv_obj_t *s, const char *title, const char *const (*text)[2], int n, int dyn,
+               const char *dyn_sub);
+void status_pill(lv_obj_t *parent, const struct game_info *gi);
+void row_info(void);
 void build_library(lv_obj_t *s);
+
+/* ui_detail.c */
 void build_detail(lv_obj_t *s);
-void library_init(void);
+
+/* ui_picture.c */
+void build_picture(lv_obj_t *s);
+void update_picture(void);
 
 /* ui_controls.c */
 void build_remap(lv_obj_t *s);

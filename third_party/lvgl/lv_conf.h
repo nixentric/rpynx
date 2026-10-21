@@ -39,6 +39,9 @@
 #define LV_USE_FONT_PLACEHOLDER 1
 
 #define LV_USE_TJPGD    1
+/* Covers and backdrops chosen on the Switch: the loader has no JPEG encoder
+ * (app/launcher/art.c writes 24-bit BMP). */
+#define LV_USE_BMP      1
 #define LV_USE_FS_STDIO 1
 #define LV_FS_STDIO_LETTER 'S'
 

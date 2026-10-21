@@ -14,8 +14,9 @@ third_party/lvgl/fetch.sh
 make -s -j8 -f third_party/lvgl/Makefile OUT=build/host/lvgl CC=cc AR=ar \
     CFLAGS="-O2 -g -Wno-unused-function"
 cc -std=gnu11 -g -O1 -Wall -Wextra -Werror -fsanitize=address,undefined \
-    -Iapp/ui -Iapp/launcher -Iapp/diagnostics -Iplatform/input -Ithird_party/lvgl -Ibuild/lvgl/lvgl \
-    tests/ui/mockups.c app/ui/ui*.c app/diagnostics/log.c platform/input/input.c \
+    -Iapp/ui -Iapp/launcher -Iapp/diagnostics -Iplatform/input -Iplatform/filesystem -Ithird_party/lvgl \
+    -Ibuild/lvgl/lvgl tests/ui/mockups.c app/ui/ui*.c app/diagnostics/log.c platform/input/input.c \
+    platform/filesystem/fs.c \
     build/host/lvgl/liblvgl.a -lm -o "$out/mockups"
 
 sdk=build/renpy/renpy
@@ -36,6 +37,12 @@ for img in "the_question/game/gui/main_menu.png" "tutorial/game/gui/main_menu.jp
     sips -c 450 300 "$out/covers/$name.png" >/dev/null
     sips -s format jpeg "$out/covers/$name.png" --out "$out/covers/$name.jpg" >/dev/null
 done
+# An Album screenshot for the picture page (Change picture): 1280x720, as the
+# Switch takes them. On the Switch the Album service decodes them.
+if [ -f "$sdk/the_question/game/images/bg club.jpg" ]; then
+    sips -s format png -z 720 1280 "$sdk/the_question/game/images/bg club.jpg" --out "$out/covers/shot.png" >/dev/null
+    sips -s format jpeg "$out/covers/shot.png" --out "$out/covers/shot.jpg" >/dev/null
+fi
 # A custom cover, as a user would pick one: Sylvie over a background (ImageMagick).
 q="$sdk/the_question/game/images"
 if command -v magick >/dev/null && [ -f "$q/bg uni.jpg" ]; then

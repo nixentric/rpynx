@@ -1,4 +1,4 @@
-"""Tests for importer/rsl_import.py. Fixtures are fake games built in a temp dir.
+"""Tests for the importer: importer/rsl/ and its command line, importer/rsl_import.py. Fixtures are fake games built in a temp dir.
 
 usage: /usr/bin/python3 -m unittest tests/unit/test_importer.py
 """
@@ -23,7 +23,9 @@ import zlib
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "importer"))
-import rsl_import as imp  # noqa: E402
+import rsl as imp  # noqa: E402
+import rsl_import  # noqa: E402
+from rsl import archives, exporter, library, media, recompile, tools  # noqa: E402  (what tests patch)
 
 
 def rpyc(protocol):
@@ -103,6 +105,36 @@ def find_7z():
         return None
 
 
+HAVE_FFMPEG = shutil.which("ffmpeg") and shutil.which("ffprobe")
+
+
+def picture(path, color, size="1280x720"):
+    """A one-colour PNG made with FFmpeg."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=%s:size=%s" % (color, size),
+                    "-frames:v", "1", path], check=True)
+    return path
+
+
+def colour(path):
+    """The (r, g, b) of a picture's middle pixel, decoded by FFmpeg."""
+    r = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vf", "crop=2:2", "-frames:v", "1",
+                        "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], check=True, capture_output=True)
+    return tuple(r.stdout[:3])
+
+
+def loader_jpeg(test, path, size):
+    """What the loader's TJpgDec reads (docs/LOADER_UI.md "Covers"): baseline (SOF0), not
+    progressive, 4:2:0 sampling, the given size."""
+    with open(path, "rb") as f:
+        data = f.read()
+    sof = data.find(b"\xff\xc0")
+    test.assertGreater(sof, 0, "baseline")
+    test.assertNotIn(b"\xff\xc2", data, "not progressive")
+    test.assertEqual(data[sof + 11], 0x22, "4:2:0")
+    test.assertEqual(imp.image_size(path), size)
+
+
 def listing(root):
     return sorted(os.path.relpath(os.path.join(d, n), root)
                   for d, ds, fs in os.walk(root) for n in ds + fs)
@@ -119,7 +151,7 @@ class ImporterTest(unittest.TestCase):
     def run_cli(self, *args):
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = imp.main(list(args))
+            code = rsl_import.main(list(args))
         return code, out.getvalue(), err.getvalue()
 
     def analyze_dir(self, base):
@@ -200,12 +232,12 @@ class ImporterTest(unittest.TestCase):
 
     def test_zip_limits_rejected(self):
         z = self.zip_of([("game/a.rpy", "a"), ("game/b.rpy", "b")])
-        old = imp.MAX_FILES
-        imp.MAX_FILES = 1
+        old = archives.MAX_FILES
+        archives.MAX_FILES = 1
         try:
             self.assertRefused(z, "entries (limit 1)")
         finally:
-            imp.MAX_FILES = old
+            archives.MAX_FILES = old
 
     def test_zip_symlink_outside_rejected(self):
         link = zipfile.ZipInfo("game/link")
@@ -254,7 +286,7 @@ class ImporterTest(unittest.TestCase):
         m, _, _ = self.analyze_dir(orphan)
         self.assertEqual(list(m["suggested_options"]), ["decompile"], "the page shows it as an alert")
         self.assertIn("1 compiled scripts were never decompiled", m["suggested_options"]["decompile"])
-        with mock.patch.object(imp, "UNRPYC", self.path("none", "unrpyc.py")):
+        with mock.patch.object(recompile, "UNRPYC", self.path("none", "unrpyc.py")):
             code, _, err = self.run_cli(orphan, "--decompile")   # --recompile is implied
         self.assertIn("unrpyc not found; fetch it with third_party/unrpyc/fetch.sh", err)
         with mock.patch.dict(os.environ, {"PATH": self.path("empty")}):
@@ -265,7 +297,7 @@ class ImporterTest(unittest.TestCase):
         self.assertIn("--decompile: cannot run", err)
         for args in (["--decompiler", "rpycdec"], ["--decompile", "--rpycdec-python", "python3"]):
             with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
-                imp.main([orphan] + args)
+                rsl_import.main([orphan] + args)
         os.remove(os.path.join(orphan, "game", "secret.rpyc"))
         write(os.path.join(orphan, "game", "scripts.rpa"), b"RPA-3.0 ")
         code, _, err = self.run_cli(orphan, "--recompile")
@@ -361,7 +393,7 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual(sorted(index), ["audio/ブ.ogg", "images/セーブ.png"], "names in NFC")
         self.assertEqual(imp.read_member(game, ("rsl-nonascii.rpa",) + index["audio/ブ.ogg"]), b"OggS jp")
 
-        with mock.patch.object(imp, "PACKED_MAX", 40):   # each member alone fills an archive
+        with mock.patch.object(exporter, "PACKED_MAX", 40):   # each member alone fills an archive
             imp.export(m, gamedir, files, out, True, extra)
         archives = [n for n in listing(game) if n.endswith(".rpa")]
         self.assertEqual(archives, ["rsl-nonascii-2.rpa", "rsl-nonascii.rpa"])
@@ -530,9 +562,75 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual(imp.sha256(os.path.join(game, "media.rpa")), imp.sha256(rpa), "archive unchanged")
         self.assertIn("1 of them come from archives", stdout)
 
+    @unittest.skipUnless(HAVE_FFMPEG, "FFmpeg not installed")
+    def test_cover_and_backdrop(self):
+        src = make_game(self.path("FakeQuest"))
+        game = os.path.join(src, "game")
+        write(os.path.join(game, "gui.rpy"), 'define gui.main_menu_background = "images/Title.png"  # art\n')
+        with open(picture(self.path("title.png"), "red"), "rb") as f:
+            make_rpa(os.path.join(game, "images.rpa"), {"images/title.png": f.read()})   # case as on Windows
+        picture(os.path.join(game, "gui", "main_menu.png"), "lime")   # gui.rpy names another picture
+        out = self.path("sd")
+        dest = os.path.join(out, "switch", "renpy-loader", "games", "fake-quest")
+
+        code, stdout, err = self.run_cli(src, "--out", out)
+        self.assertEqual(code, 0, err)
+        self.assertIn("Pictures: cover.jpg, backdrop.jpg", stdout)
+        self.assertEqual(sorted(os.listdir(dest)), ["backdrop.jpg", "cover.jpg", "game", "manifest.json"])
+        loader_jpeg(self, os.path.join(dest, "cover.jpg"), (300, 450))
+        loader_jpeg(self, os.path.join(dest, "backdrop.jpg"), (640, 360))
+        self.assertGreater(colour(os.path.join(dest, "cover.jpg"))[0], 200, "from images/title.png")
+        with open(os.path.join(dest, "manifest.json"), encoding="utf-8") as f:
+            m = json.load(f)
+        self.assertEqual((m["cover"], m["backdrop"], "cover_custom" in m), ("cover.jpg", "backdrop.jpg", False))
+
+        # A chosen cover (any shape: cut from the middle) replaces it, and later exports keep it.
+        poster = picture(self.path("poster.jpg"), "blue", "600x400")
+        code, stdout, err = self.run_cli(src, "--out", out, "--replace", "--cover", poster)
+        self.assertEqual(code, 0, err)
+        self.assertIn("Pictures: cover.jpg (chosen), backdrop.jpg", stdout)
+        self.assertEqual(self.run_cli(src, "--out", out, "--replace")[0], 0)
+        loader_jpeg(self, os.path.join(dest, "cover.jpg"), (300, 450))
+        self.assertGreater(colour(os.path.join(dest, "cover.jpg"))[2], 200, "the chosen cover is kept")
+        self.assertGreater(colour(os.path.join(dest, "backdrop.jpg"))[0], 200, "the backdrop stays the menu art")
+
+        # A picture chosen on the Switch (the loader writes BMP) is kept as well.
+        with open(os.path.join(dest, "manifest.json"), encoding="utf-8") as f:
+            m = json.load(f)
+        m.update(backdrop="backdrop.bmp", backdrop_custom=True)
+        write(os.path.join(dest, "manifest.json"), json.dumps(m))
+        write(os.path.join(dest, "backdrop.bmp"), b"BM switch")
+        self.assertEqual(self.run_cli(src, "--out", out, "--replace")[0], 0)
+        with open(os.path.join(dest, "manifest.json"), encoding="utf-8") as f:
+            m = json.load(f)
+        self.assertEqual((m["cover"], m["backdrop"], m["backdrop_custom"]), ("cover.jpg", "backdrop.bmp", True))
+        self.assertTrue(os.path.isfile(os.path.join(dest, "backdrop.bmp")))
+
+    @unittest.skipUnless(HAVE_FFMPEG, "FFmpeg not installed")
+    def test_pictures_fallback_and_failures(self):
+        src = make_game(self.path("FakeQuest"))
+        write(os.path.join(src, "game", "gui.rpy"), 'define gui.main_menu_background = Movie(play="a.webm")\n')
+        code, stdout, err = self.run_cli(src)
+        self.assertEqual(code, 0, err)
+        self.assertIn("Pictures: none; the loader shows a placeholder", stdout)
+        self.assertNotIn("Warnings", stdout, "a game without menu art is not a problem")
+
+        picture(os.path.join(src, "game", "gui", "main_menu.png"), "red")
+        code, stdout, err = self.run_cli(src, "--backdrop", self.path("missing.png"))
+        self.assertEqual(code, 1)
+        self.assertIn("backdrop %s: " % self.path("missing.png"), err)
+        with mock.patch.object(media, "find_tool", return_value=None):
+            code, stdout, err = self.run_cli(src)
+            self.assertEqual(code, 0, err)
+            self.assertIn("no cover or backdrop from gui/main_menu.png: FFmpeg is needed for covers", stdout)
+            self.assertIn("Pictures: none", stdout)
+            code, _, err = self.run_cli(src, "--cover", self.path("poster.png"))
+            self.assertEqual(code, 1)
+            self.assertIn("FFmpeg is needed", err)
+
     def test_bad_id_rejected(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
-            imp.main([self.tmp, "--id", "Bad Id"])
+            rsl_import.main([self.tmp, "--id", "Bad Id"])
 
     def test_not_a_game(self):
         write(self.path("docs", "readme.txt"), "hi")
@@ -576,7 +674,7 @@ class ImporterTest(unittest.TestCase):
         bad = ["game/.. /evil.txt", "game/... /x", "game/script.rpy:stream", "game/CON", "game/nul.txt",
                "game/lpt1", "game/a?.png", "game/what*", "game/trailing.", "game/space "]
         good = ["game/images/bg.png", "game/console.rpy", "game/セーブ.png", "game/nullable.rpy"]
-        with mock.patch.object(imp, "WINDOWS", True):
+        with mock.patch.object(tools, "WINDOWS", True):
             for name in bad:
                 with self.assertRaises(imp.Refused, msg=name):
                     imp.member_parts(name)
@@ -593,23 +691,23 @@ class ImporterTest(unittest.TestCase):
             return path
         program_files = self.path("Program Files")
         seven = tool(os.path.join(program_files, "7-Zip", "7z.exe"))
-        tools = self.path("ffmpeg", "bin")
-        tool(os.path.join(tools, "ffprobe.exe" if os.name == "nt" else "ffprobe"))
+        ffmpeg_bin = self.path("ffmpeg", "bin")
+        tool(os.path.join(ffmpeg_bin, "ffprobe.exe" if os.name == "nt" else "ffprobe"))
         empty = self.path("empty")
         os.makedirs(empty)
         with mock.patch.dict(os.environ, {"PATH": empty, "ProgramFiles": program_files}), \
-                mock.patch.object(imp, "SEVEN_ZIP", ("7z",)), mock.patch.object(imp, "TOOL_DIRS", []):
+                mock.patch.object(tools, "SEVEN_ZIP", ("7z",)), mock.patch.object(tools, "TOOL_DIRS", []):
             self.assertEqual(imp.seven_zip(), seven)
             self.assertIsNone(imp.find_tool(("ffprobe",)))
-            imp.TOOL_DIRS.append(tools)   # what --tools and the UI's "Tools folder" set
-            self.assertEqual(os.path.dirname(imp.find_tool(("ffprobe",))), tools)
+            tools.TOOL_DIRS.append(ffmpeg_bin)   # what --tools and the UI's "Tools folder" set
+            self.assertEqual(os.path.dirname(imp.find_tool(("ffprobe",))), ffmpeg_bin)
             del os.environ["ProgramFiles"]
             with self.assertRaisesRegex(imp.Refused, "7-zip.org"):
                 imp.seven_zip()
 
     def test_windows_tools_run_without_console(self):
-        with mock.patch.object(imp, "NO_WINDOW", 0x08000000), \
-                mock.patch.object(imp.subprocess, "run") as run, mock.patch.object(imp, "seven_zip", lambda: "7z.exe"):
+        with mock.patch.object(tools, "NO_WINDOW", 0x08000000), \
+                mock.patch.object(tools.subprocess, "run") as run, mock.patch.object(tools, "seven_zip", lambda: "7z.exe"):
             run.return_value.stdout = "{}"
             imp.run_7z(["l", "-slt", "x.7z"])
             imp.probe_video("ffprobe.exe", "v.webm")
@@ -619,7 +717,7 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual(run.call_args_list[0].args[0][:3], ["7z.exe", "l", "-sccUTF-8"])
 
     def test_windows_bare_drive_is_its_root(self):
-        with mock.patch.object(imp.os, "path", ntpath), mock.patch.object(imp.os, "sep", "\\"):
+        with mock.patch.object(library.os, "path", ntpath), mock.patch.object(library.os, "sep", "\\"):
             for out in ("E:", "E:\\"):
                 self.assertEqual(imp.games_dir(out), "E:\\switch\\renpy-loader\\games", out)
 
@@ -628,7 +726,7 @@ class ImporterTest(unittest.TestCase):
         write(os.path.join(src, "game", "options.rpy"), 'define config.name = _("ドキドキ")\n')
         console = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")   # Windows, output redirected
         with contextlib.redirect_stdout(console):
-            code = imp.main([src])
+            code = rsl_import.main([src])
         console.flush()
         self.assertEqual(code, 0)
         self.assertIn(b"???? ", console.buffer.getvalue())
@@ -731,7 +829,7 @@ class SwitchFtpTest(unittest.TestCase):
         def connect():
             self.connections.append(FakeFTP(self.sd, **kw))
             return self.connections[-1]
-        patcher = mock.patch.object(imp.ftplib, "FTP", connect)
+        patcher = mock.patch.object(library.ftplib, "FTP", connect)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -817,7 +915,7 @@ class SwitchFtpTest(unittest.TestCase):
         self.switch(refuse=True)
         code, err = 0, io.StringIO()
         with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
-            code = imp.main([self.src, "--out", "ftp://192.168.1.20"])
+            code = rsl_import.main([self.src, "--out", "ftp://192.168.1.20"])
         self.assertEqual(code, 1)
         self.assertIn("cannot reach the Switch at 192.168.1.20:5000", err.getvalue())
 
@@ -874,6 +972,38 @@ class SwitchFtpTest(unittest.TestCase):
         self.assertEqual(why["Old Game"], ["the library copy came from Old"])
         self.assertEqual([r["state"] for r in rows][:2], ["different", "different"], "differences first")
         self.assertEqual(imp.compare(col, self.URL), rows, "the same over FTP")
+
+    @unittest.skipUnless(HAVE_FFMPEG, "FFmpeg not installed")
+    def test_pictures_for_games_in_the_library(self):
+        self.export()
+        art = picture(os.path.join(self.tmp, "art.png"), "blue")
+        dest = os.path.join(self.games, "fake-quest")
+        for target in (self.URL, self.sd):
+            imp.set_art(target, "fake-quest", "backdrop", art)
+            got = imp.read_art(target, "fake-quest")
+            self.assertEqual(list(got), ["backdrop"])
+            self.assertEqual(got["backdrop"][0], "backdrop.jpg")
+            loader_jpeg(self, os.path.join(dest, "backdrop.jpg"), (640, 360))
+        with open(os.path.join(dest, "manifest.json"), encoding="utf-8") as f:
+            m = json.load(f)
+        self.assertEqual((m["backdrop"], m["backdrop_custom"], m["title"]), ("backdrop.jpg", True, "Fake Quest"))
+
+        # Chosen on the Switch: the loader writes cover.bmp. An update over FTP keeps both.
+        m.update(cover="cover.bmp", cover_custom=True)
+        write(os.path.join(dest, "manifest.json"), json.dumps(m))
+        write(os.path.join(dest, "cover.bmp"), b"BM switch")
+        self.export(replace=True)
+        self.assertEqual(sorted(os.listdir(dest)), ["backdrop.jpg", "cover.bmp", "game", "manifest.json"])
+        self.assertEqual(os.listdir(self.games), ["fake-quest"], "no .old- folder left")
+        self.assertEqual(sorted(imp.read_art(self.URL, "fake-quest")), ["backdrop", "cover"])
+
+        write(os.path.join(self.games, "by-hand", "game", "script.rpy"), "label start:\n")
+        for game, why in (("by-hand", "no manifest.json"), ("gone", "not in the library"), ("..", "not in the library")):
+            with self.assertRaises(imp.Refused) as cm:
+                imp.set_art(self.URL, game, "cover", art)
+            self.assertIn(why, str(cm.exception))
+        with self.assertRaises(imp.Refused):
+            imp.set_art(self.URL, "fake-quest", "cover", os.path.join(self.tmp, "missing.png"))
 
     def test_local_delete_keeps_saves(self):
         m, gamedir, files, extra = imp.analyze(self.src, "directory", self.src)

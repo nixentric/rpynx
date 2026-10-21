@@ -3,6 +3,7 @@
  *   actions.c   input, and what each action does on each screen
  *   library.c   the game scan, manifests, the loader's settings, launching
  *   controls.c  controller settings: remapping, presets, saving
+ *   art.c       change picture: an Album screenshot as a cover or backdrop
  * The screens themselves are app/ui. */
 #ifndef RSL_LAUNCHER_H
 #define RSL_LAUNCHER_H
@@ -56,5 +57,10 @@ void open_remap(const char *path, const char *label, bool fallback_to_global, sc
 void game_controls(int i, screen_id back);
 void remap_capture_tick(void);
 void remap_action(rsl_action a);
+
+/* art.c */
+void open_picture(int i);
+void picture_tick(void);
+void picture_action(rsl_action a);
 
 #endif

@@ -92,6 +92,39 @@ fail:
     return false;
 }
 
+static void put_le(uint8_t *p, uint32_t v, int bytes)
+{
+    for (int i = 0; i < bytes; i++)
+        p[i] = (uint8_t)(v >> 8 * i);
+}
+
+bool rsl_write_bmp(const char *path, const uint32_t *px, int w, int h, char *err, size_t errlen)
+{
+    size_t row = ((size_t)w * 3 + 3) & ~(size_t)3, size = 54 + row * (size_t)h;
+    uint8_t *b = calloc(1, size);
+    if (!b) {
+        snprintf(err, errlen, "not enough memory for %s", path);
+        return false;
+    }
+    b[0] = 'B', b[1] = 'M';
+    put_le(b + 2, (uint32_t)size, 4);
+    put_le(b + 10, 54, 4);                  /* pixels after the two headers */
+    put_le(b + 14, 40, 4);                  /* BITMAPINFOHEADER */
+    put_le(b + 18, (uint32_t)w, 4);
+    put_le(b + 22, (uint32_t)h, 4);         /* positive: the last row first */
+    put_le(b + 26, 1, 2);
+    put_le(b + 28, 24, 2);
+    put_le(b + 34, (uint32_t)(row * (size_t)h), 4);
+    for (int y = 0; y < h; y++) {
+        uint8_t *d = b + 54 + row * (size_t)(h - 1 - y);
+        for (int x = 0; x < w; x++)
+            put_le(d + 3 * x, px[(size_t)y * w + x], 3);   /* B, G, R */
+    }
+    bool ok = rsl_write_atomic(path, b, size, err, errlen);
+    free(b);
+    return ok;
+}
+
 bool rsl_mkdirs(const char *path)
 {
     char buf[1024];

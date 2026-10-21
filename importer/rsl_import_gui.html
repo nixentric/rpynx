@@ -36,6 +36,10 @@ svg { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColo
 aside { width: 224px; flex-shrink: 0; padding: 16px 8px; background: var(--sidebar); border-right: 1px solid var(--border); }
 .mac aside { padding-top: 52px; }   /* the page runs under the transparent title bar's buttons */
 .mac main { padding-top: 40px; }
+/* The web view covers the title bar, so the page provides one: dragging .pywebview-drag-region
+   moves the window (pywebview). Windows keeps its own title bar. */
+.titlebar { display: none; }
+.mac .titlebar { display: block; position: fixed; top: 0; left: 0; right: 0; height: 40px; z-index: 10; }
 .brand { display: flex; gap: 10px; align-items: center; padding: 0 8px 16px; }
 .logo { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center;
         background: var(--primary); color: var(--primary-fg); }
@@ -89,7 +93,7 @@ label.field { gap: 12px; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 20px; margin-bottom: 20px; }
 .game { cursor: pointer; min-width: 0; }
-.cover { position: relative; aspect-ratio: 3 / 4; border-radius: 12px; overflow: hidden; display: grid;
+.cover { position: relative; aspect-ratio: 2 / 3; border-radius: 12px; overflow: hidden; display: grid;
          place-items: center; background: var(--muted); border: 1px solid var(--border);
          transition: transform .15s, box-shadow .15s; }
 .game:hover .cover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
@@ -97,6 +101,17 @@ label.field { gap: 12px; }
 .cover .letter { font-size: 56px; font-weight: 600; letter-spacing: -.04em; color: var(--foreground); opacity: .85; }
 .cover .label { position: absolute; left: 12px; bottom: 10px; font-size: 11px; font-weight: 500;
                 letter-spacing: .08em; color: var(--muted-fg); }
+.cover img, .pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cover img:not([src]), .pic img:not([src]) { display: none; }
+/* The loader's two pictures: the cover (2:3) and the backdrop behind its detail page (16:9). */
+.pics { display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; margin-top: 16px; }
+.pics figure { margin: 0; display: grid; gap: 8px; justify-items: start; }
+.pics figcaption { font-size: 12px; color: var(--muted-fg); }
+.pic { position: relative; overflow: hidden; display: grid; place-items: center; border-radius: 8px;
+       background: var(--muted); border: 1px solid var(--border); font-size: 12px; color: var(--muted-fg); }
+.pic.c { width: 120px; aspect-ratio: 2 / 3; }
+.pic.b { width: 320px; aspect-ratio: 16 / 9; }
+.pics button { height: 30px; padding: 0 12px; font-size: 13px; }
 .game .name { margin-top: 10px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; margin-top: 4px;
@@ -154,8 +169,9 @@ td .chip { margin-top: 0; }
 </style>
 </head>
 <body>
+<div class="titlebar pywebview-drag-region"></div>
 <aside>
-  <div class="brand">
+  <div class="brand pywebview-drag-region">
     <div class="logo"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="6"/><path d="M8 10v4M6 12h4M16 11h.01M18 13h.01"/></svg></div>
     <div><b>Ren'Py Switch Loader</b><span>Importer</span></div>
   </div>
@@ -189,6 +205,12 @@ td .chip { margin-top: 0; }
         Its saves stay in <code id="confirm-saves"></code> unless you tick the box.</div>
       <label><input type="checkbox" id="delete-saves"> Also delete its saves</label>
       <div class="row"><button class="danger" id="confirm-delete">Delete</button><button id="confirm-keep">Keep</button></div>
+    </div>
+    <div class="pics" id="d-pics">
+      <figure><div class="pic c">None<img data-pic="cover" alt=""></div><figcaption>Cover</figcaption>
+        <button data-art="cover">Change cover…</button></figure>
+      <figure><div class="pic b">None<img data-pic="backdrop" alt=""></div><figcaption>Background (detail page, Cinematic layout)</figcaption>
+        <button data-art="backdrop">Change background…</button></figure>
     </div>
     <pre id="detail-report"></pre>
   </div>
@@ -252,6 +274,13 @@ td .chip { margin-top: 0; }
   </div>
   <div class="card" id="result" hidden>
     <div class="row"><h3 id="r-title" style="margin:0"></h3><span id="r-chip"></span></div>
+    <div class="pics" id="r-pics">
+      <figure><div class="pic c">None<img data-pic="cover" alt=""></div><figcaption>Cover</figcaption>
+        <button data-art="cover">Change cover…</button></figure>
+      <figure><div class="pic b">None<img data-pic="backdrop" alt=""></div><figcaption>Background (detail page, Cinematic layout)</figcaption>
+        <button data-art="backdrop">Change background…</button></figure>
+    </div>
+    <div class="muted small" style="margin-top:8px">Made from the game's menu art unless you choose a picture; a chosen one stays when the game is replaced later.</div>
     <pre id="r-report"></pre>
   </div>
   <div class="card">
@@ -291,7 +320,7 @@ td .chip { margin-top: 0; }
 "use strict";
 if (/Mac/.test(navigator.platform)) document.documentElement.classList.add("mac");
 const $ = id => document.getElementById(id);
-const state = {sd: null, source: null, analyzed: null, busy: null, cancelling: false, selected: null};
+const state = {sd: null, source: null, analyzed: null, busy: null, cancelling: false, selected: null, art: {}};
 let api = null;
 
 async function call(name, ...args) {
@@ -334,9 +363,19 @@ function hue(text) {
   return h;
 }
 
+// The loader's cover and backdrop in a .pics box; art is {cover, backdrop} data URLs.
+function showPics(box, art) {
+  for (const key of ["cover", "backdrop"]) {
+    const img = box.querySelector(`[data-pic=${key}]`);
+    if (art && art[key]) img.src = art[key];
+    else img.removeAttribute("src");
+  }
+}
+
 async function refreshLibrary() {
   const grid = $("grid");
   grid.replaceChildren();
+  state.art = {};
   $("detail").hidden = true;
   say("", false, "lib-status");
   $("lib-empty").hidden = !!state.sd;
@@ -363,18 +402,59 @@ async function refreshLibrary() {
     const label = document.createElement("span");
     label.className = "label";
     label.textContent = "REN'PY";
-    cover.append(letter, label);
+    const img = document.createElement("img");
+    img.alt = "";
+    cover.append(letter, label, img);
     card.append(cover, name, chip(g.manifest));
     card.onclick = () => {
       grid.querySelectorAll(".game").forEach(c => c.classList.toggle("sel", c === card));
-      state.selected = {id: g.id, name: name.textContent};
+      state.selected = {id: g.id, name: name.textContent, manifest: !!g.manifest, img};
       $("detail-title").textContent = name.textContent;
       $("detail-chip").replaceChildren(chip(g.manifest));
       $("detail-report").textContent = g.report;
+      showPics($("d-pics"), state.art[g.id]);
       $("confirm").hidden = true;
       $("detail").hidden = false;
+      updateButtons();
     };
     grid.append(card);
+  }
+  // The pictures after the grid shows: over FTP each is a download from the Switch.
+  for (const [i, g] of r.games.entries()) {
+    if (!g.manifest) continue;
+    const art = await call("art", state.sd, g.id);
+    if (gen !== state.libGen) return;
+    if (art.error) continue;
+    state.art[g.id] = art;
+    if (art.cover) grid.children[i].querySelector("img").src = art.cover;
+    if (state.selected && state.selected.id === g.id) showPics($("d-pics"), art);
+  }
+}
+
+// Change cover… / Change background…: for the analysed game (written on export), or at
+// once for the game selected in the library.
+async function changeArt(key, inLibrary) {
+  const image = await call("pick", "image");
+  if (!image || image.error) return;
+  const game = state.selected, where = inLibrary ? "lib-status" : "status";
+  state.busy = "art";
+  updateButtons();
+  say(inLibrary && isFtp(state.sd) ? "Making the picture and sending it to the Switch…" : "Making the picture…",
+      false, where);
+  const r = inLibrary ? await call("set_art", state.sd, game.id, key, image) : await call("choose_art", key, image);
+  state.busy = null;
+  updateButtons();
+  if (r.error) { say(r.error, true, where); return; }
+  const what = key === "cover" ? "Cover" : "Background";
+  if (inLibrary) {
+    state.art[game.id] = r;
+    showPics($("d-pics"), r);
+    if (r.cover) game.img.src = r.cover;
+    say(`${what} of ${game.name} changed; the loader shows it the next time it starts.`, false, where);
+  } else {
+    showPics($("r-pics"), r.art);
+    $("r-report").textContent = r.report;
+    say(`${what} chosen; it is written when you export.`, false, where);
   }
 }
 
@@ -403,8 +483,10 @@ function updateButtons() {
   $("analyze").disabled = !!state.busy || !state.source;
   $("export").disabled = !!state.busy || !m || m.status === "unsupported" || !state.sd;
   $("cancel").disabled = state.busy !== "export";
-  document.querySelectorAll("[data-pick], [data-enable], input, #delete, #confirm-delete, #ftp-connect")
+  document.querySelectorAll("[data-pick], [data-enable], input, #delete, #confirm-delete, #ftp-connect, [data-art]")
     .forEach(e => e.disabled = !!state.busy);
+  if (state.selected && !state.selected.manifest)   // the manifest names the pictures
+    $("d-pics").querySelectorAll("[data-art]").forEach(b => b.disabled = true);
   $("compare-pick").disabled = $("cmp-again").disabled = !!state.busy || !state.sd;
   $("cmp-cancel").disabled = state.busy !== "compare";
 }
@@ -426,10 +508,11 @@ function showHints(suggested) {
   }
 }
 
-function showResult(m, report) {
+function showResult(m, report, art) {
   $("r-title").textContent = m.title + "  (games/" + m.id + ")";
   $("r-chip").replaceChildren(chip(m));
   $("r-report").textContent = report;
+  if (art) showPics($("r-pics"), art);
   $("result").hidden = false;
 }
 
@@ -456,7 +539,7 @@ async function analyze() {
   } else {
     const m = state.analyzed = r.manifest;
     const suggested = m.suggested_options || {};
-    showResult(m, r.report);
+    showResult(m, r.report, r.art);
     showHints(suggested);
     const hint = Object.keys(suggested).length ? " Suggested options are marked above." : "";
     if (m.status === "unsupported") say("This game cannot be exported as it is: " + m.reasons[0] + hint, true);
@@ -595,6 +678,8 @@ document.querySelectorAll("[data-enable]").forEach(b => b.onclick = () => {
   invalidate();
   analyze();
 });
+$("r-pics").querySelectorAll("[data-art]").forEach(b => b.onclick = () => changeArt(b.dataset.art, false));
+$("d-pics").querySelectorAll("[data-art]").forEach(b => b.onclick = () => changeArt(b.dataset.art, true));
 $("analyze").onclick = analyze;
 $("export").onclick = exportGame;
 $("delete").onclick = () => {

@@ -20,27 +20,28 @@
 #define RUNTIME_NRO ROOT "/runtimes/renpy-runtime.nro"
 #define MAX_GAMES   64
 
-typedef enum { SCR_LIBRARY, SCR_DETAIL, SCR_REMAP, SCR_TEST, SCR_DIAG, SCR_HELP, SCR_LAYOUT } screen_id;
+typedef enum { SCR_LIBRARY, SCR_DETAIL, SCR_REMAP, SCR_TEST, SCR_DIAG, SCR_HELP, SCR_LAYOUT, SCR_PICTURE } screen_id;
 
 /* Rows of the controller settings screen: one per action, then these. */
 enum { ROW_DEADZONE = RSL_ACT_COUNT, ROW_SPEED, ROW_ACCEL, ROW_DELAY, ROW_INTERVAL,
        ROW_STICKS, ROW_CURSOR_VIS, ROW_COUNT };
 
-enum { MENU_REMAP, MENU_TEST, MENU_DIAG, MENU_LAYOUT, MENU_HELP, MENU_EXIT, MENU_COUNT };   /* + menu */
+enum { MENU_REMAP, MENU_TEST, MENU_LAYOUT, MENU_HELP, MENU_DIAG, MENU_EXIT, MENU_COUNT };   /* + menu */
 enum { LAYOUT_ROW, LAYOUT_GRID, LAYOUT_CINEMA, LAYOUT_COUNT };   /* library layouts, docs/LOADER_UI.md */
 /* Layout page (+ menu): the library layouts, the background switch, the
  * accent colour presets, then the custom hue row. */
 enum { ACCENT_PRESETS = 8 };
 enum { SET_BACKDROP = LAYOUT_COUNT, SET_PRESET, SET_CUSTOM = SET_PRESET + ACCENT_PRESETS, SET_COUNT };
 enum { HELP_COUNT = 5 };                                          /* how-to-play cards */
-enum { DETAIL_LAUNCH, DETAIL_CONTROLS, DETAIL_COUNT };              /* detail buttons */
+enum { DETAIL_LAUNCH, DETAIL_CONTROLS, DETAIL_PICTURE, DETAIL_COUNT };   /* detail buttons, right to left */
+enum { USE_COVER, USE_BACKDROP, USE_BOTH, USE_COUNT };            /* picture page: what it becomes */
 
 typedef enum { ST_INFO, ST_OK, ST_BAD } status_kind;
 
 struct game_info {
     char title[96];            /* manifest title, "" if none (the folder name is shown) */
-    char cover[200];           /* cover JPEG path, "" for a placeholder */
-    char backdrop[200];        /* 16:9 menu art JPEG for the Cinematic layout, "" if none */
+    char cover[200];           /* cover JPEG (BMP if chosen on the Switch) path, "" for a placeholder */
+    char backdrop[200];        /* 16:9 picture behind Cinematic and the details, "" if none */
     char renpy[24];            /* Ren'Py version from manifest.json, "" if none */
     char state[16];            /* experimental / unsupported; "" without manifest */
     char runtime[49];          /* runtime the game needs */
@@ -84,6 +85,14 @@ typedef struct {
 
     char evlog[8][40];             /* controller test: recent events */
     int evcount;
+
+    /* Picture page (Change picture on the details): one Album screenshot at a
+     * time, g.sel its index, newest first; g.menu_open the choice of what it becomes. */
+    uint32_t *shot;                /* its pixels, XRGB8888 (B,G,R,X), shot_w x shot_h; NULL off the page */
+    int shot_w, shot_h, shot_count;
+    unsigned shot_gen;             /* changes with every screenshot loaded into shot */
+    char shot_date[32];            /* when it was taken */
+    int crop_x;                    /* left edge of the cover's frame (2:3, full height) in it */
 
     /* Facts about the console, filled in by main.c. */
     bool sd_ok, full_memory, pad_connected, runtime_found;

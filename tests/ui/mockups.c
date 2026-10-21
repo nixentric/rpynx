@@ -13,6 +13,7 @@
 
 #include "lvgl.h"
 
+#include "fs.h"
 #include "loader.h"
 #include "log.h"
 #include "ui.h"
@@ -153,6 +154,43 @@ static void cover(int i, const char *dir, const char *name)
 static void backdrop(int i, const char *dir, const char *name)
 {
     snprintf(g.info[i].backdrop, sizeof g.info[i].backdrop, "%s/bd-%s.jpg", dir, name);
+}
+
+/* A 1280x720 screenshot as the Album service hands it over: decoded pixels
+ * (here LVGL decodes dir/shot.jpg); black when there is no such file. */
+static void album_shot(const char *dir, uint32_t *px)
+{
+    static lv_draw_buf_t buf;
+    char src[600];
+    lv_layer_t layer;
+    lv_draw_image_dsc_t d;
+    lv_area_t a = { 0, 0, 1279, 719 };
+    snprintf(src, sizeof src, "S:%s/shot.jpg", dir);
+    lv_draw_buf_init(&buf, 1280, 720, LV_COLOR_FORMAT_XRGB8888, 1280 * 4, px, 1280 * 720 * 4);
+    lv_obj_t *c = lv_canvas_create(lv_layer_sys());
+    lv_canvas_set_draw_buf(c, &buf);
+    lv_canvas_fill_bg(c, lv_color_black(), LV_OPA_COVER);
+    lv_canvas_init_layer(c, &layer);
+    lv_draw_image_dsc_init(&d);
+    d.src = src;
+    lv_draw_image(&layer, &d, &a);
+    lv_canvas_finish_layer(c, &layer);
+    lv_obj_delete(c);
+}
+
+/* What the picture page writes (app/launcher/art.c): the part x, w wide, of
+ * the screenshot scaled to ow x oh, as a 24-bit BMP at dir/name. */
+static void picture_part(const char *dir, const char *name, int x, int w, int ow, int oh, char *path, size_t len)
+{
+    char err[200];
+    uint32_t *px = malloc((size_t)ow * oh * 4);
+    snprintf(path, len, "%s/%s", dir, name);
+    ui_shot_part(x, 0, w, 720, px, ow, oh);
+    if (!rsl_write_bmp(path, px, ow, oh, err, sizeof err)) {
+        fprintf(stderr, "FAIL %s\n", err);
+        failures++;
+    }
+    free(px);
 }
 
 static void event(const char *text)
@@ -311,6 +349,45 @@ int main(int argc, char **argv)
     tap(1112, 611, RSL_ACT_CONFIRM, DETAIL_LAUNCH);   /* the Launch button */
     tap(1200, 688, RSL_ACT_BACK, -1);                 /* the "B Back" hint */
 
+    /* Change picture for a game without art: an Album screenshot, the cover's
+     * frame moved right, the choice. Then what the loader writes, read back
+     * through LVGL's BMP decoder on the details and in the library. */
+    static uint32_t album[1280 * 720];
+    album_shot(covers, album);
+    g.shot = album;
+    g.shot_w = 1280;
+    g.shot_h = 720;
+    g.shot_count = 11;
+    g.shot_gen = 1;
+    snprintf(g.shot_date, sizeof g.shot_date, "2026-10-21 21:03");
+    g.screen = SCR_PICTURE;
+    g.game = 3;
+    g.sel = 2;
+    g.crop_x = 640;
+    settle();
+    shot(out, "13a-picture");
+    g.menu_open = true;
+    g.menu_sel = USE_BOTH;
+    settle();
+    shot(out, "13b-picture-use");
+    g.menu_open = false;
+    picture_part(covers, "cover.bmp", g.crop_x, 480, 300, 450, g.info[3].cover, sizeof g.info[3].cover);
+    picture_part(covers, "backdrop.bmp", 0, 1280, 640, 360, g.info[3].backdrop, sizeof g.info[3].backdrop);
+    ui_art_changed(3);
+    g.screen = SCR_DETAIL;
+    g.sel = DETAIL_PICTURE;
+    snprintf(g.status, sizeof g.status, "Cover and background saved for %s.", g.info[3].title);
+    g.status_kind = ST_OK;
+    settle();
+    shot(out, "13c-detail-picture-saved");
+    g.status[0] = '\0';
+    g.screen = SCR_LIBRARY;
+    g.shot = NULL;
+    g.sel = 3;
+    settle();
+    shot(out, "13d-library-picture-saved");
+    g.sel = 0;
+
     g.screen = SCR_LIBRARY;
     settle();
     g.screen = SCR_DETAIL;
@@ -389,7 +466,9 @@ int main(int argc, char **argv)
     g.accent = ui_hue_color(20);
     settle();
     shot(out, "12b-layout-custom-near-red");
-    g.sel = 0;
+    g.sel = 0;   /* back up from the bottom: the list scrolls to the layout cards */
+    settle();
+    shot(out, "12c-layout-back-up");
     g.accent = 0xff5fa8;
     g.accent_hue = 330;
 

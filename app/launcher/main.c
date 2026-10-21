@@ -44,7 +44,7 @@ static struct {
 
 static const char *const screen_name[] = {
     "library", "details", "controller settings", "controller test", "diagnostics", "how to play",
-    "layout",
+    "layout", "picture",
 };
 
 static uint32_t now_ms(void)

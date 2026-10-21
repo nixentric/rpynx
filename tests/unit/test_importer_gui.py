@@ -13,8 +13,9 @@ from unittest import mock
 
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [here, os.path.join(here, "..", "..", "importer")]
-from test_importer import FakeFTP, make_game, write  # noqa: E402
+from test_importer import FakeFTP, HAVE_FFMPEG, make_game, picture, write  # noqa: E402
 import rsl_import_gui as gui  # noqa: E402
+from rsl import library, recompile  # noqa: E402  (what tests patch)
 
 
 class FakeWindow:
@@ -64,7 +65,7 @@ class ApiTest(unittest.TestCase):
         os.remove(os.path.join(self.tmp, "OldGame", "game", "script.rpy"))   # sourceless: suggest Decompile
         r = self.api.analyze(os.path.join(self.tmp, "OldGame"))
         self.assertEqual(list(r["manifest"]["suggested_options"]), ["decompile"])
-        with mock.patch.object(gui.imp, "UNRPYC", os.path.join(self.tmp, "none.py")):
+        with mock.patch.object(recompile, "UNRPYC", os.path.join(self.tmp, "none.py")):
             self.assertIn("unrpyc not found", self.api.analyze(os.path.join(self.tmp, "OldGame"),
                                                                decompile="unrpyc")["error"])
             self.assertFalse(self.api.tools()["unrpyc"])
@@ -92,7 +93,7 @@ class ApiTest(unittest.TestCase):
         os.makedirs(self.sd)   # the FTP server's /
         self.api._window = FakeWindow()
         self.api.analyze(make_game(os.path.join(self.tmp, "FakeQuest")))
-        with mock.patch.object(gui.imp.ftplib, "FTP", lambda: FakeFTP(self.sd)):
+        with mock.patch.object(library.ftplib, "FTP", lambda: FakeFTP(self.sd)):
             self.assertEqual(self.api.export(url)["dest"], url + "/switch/renpy-loader/games/fake-quest")
             self.assertTrue(os.path.isfile(os.path.join(self.games, "fake-quest", "manifest.json")))
             lib = self.api.library(url)
@@ -100,9 +101,36 @@ class ApiTest(unittest.TestCase):
             self.assertEqual([g["id"] for g in lib["games"]], ["fake-quest"])
             self.assertEqual(self.api.delete(url, "fake-quest"), {})
             self.assertIn("is not there", self.api.delete(url, "fake-quest")["error"])
-        with mock.patch.object(gui.imp.ftplib, "FTP", lambda: FakeFTP(self.sd, refuse=True)):
+        with mock.patch.object(library.ftplib, "FTP", lambda: FakeFTP(self.sd, refuse=True)):
             self.assertIn("cannot reach the Switch", self.api.library(url)["error"])
             self.assertIn("cannot reach the Switch", self.api.export(url)["error"])
+
+    @unittest.skipUnless(HAVE_FFMPEG, "FFmpeg not installed")
+    def test_pictures(self):
+        src = make_game(os.path.join(self.tmp, "FakeQuest"))
+        picture(os.path.join(src, "game", "gui", "main_menu.png"), "red")
+        r = self.api.analyze(src)
+        self.assertEqual(sorted(r["art"]), ["backdrop", "cover"])
+        self.assertTrue(r["art"]["cover"].startswith("data:image/jpeg;base64,/9j/"))
+        self.assertIn("Pictures: cover.jpg, backdrop.jpg", r["report"])
+
+        poster = picture(os.path.join(self.tmp, "poster.png"), "blue", "600x900")
+        r = self.api.choose_art("cover", poster)
+        self.assertIn("Pictures: cover.jpg (chosen), backdrop.jpg", r["report"])
+        before = r["art"]
+        self.assertIn("backdrop %s" % os.path.join(self.tmp, "gone.png"),
+                      self.api.choose_art("backdrop", os.path.join(self.tmp, "gone.png"))["error"])
+        self.assertEqual(self.api._previews(), before, "a refused picture changes nothing")
+
+        dest = self.api.export(self.sd)["dest"]
+        self.assertEqual(sorted(os.listdir(dest)), ["backdrop.jpg", "cover.jpg", "game", "manifest.json"])
+        self.assertEqual(self.api.art(self.sd, "fake-quest"), before)
+        r = self.api.set_art(self.sd, "fake-quest", "backdrop", poster)
+        self.assertNotEqual(r["backdrop"], before["backdrop"])
+        self.assertEqual(r["cover"], before["cover"])
+        write(os.path.join(self.games, "by-hand", "game", "script.rpy"), "label start:\n")
+        self.assertIn("no manifest.json", self.api.set_art(self.sd, "by-hand", "cover", poster)["error"])
+        self.assertEqual(self.api.art(self.sd, "by-hand"), {})
 
     def test_compare(self):
         col = os.path.join(self.tmp, "collection")
@@ -125,6 +153,8 @@ class ApiTest(unittest.TestCase):
             self.assertIn('id="hint-%s"' % option, page)
             self.assertIn('id="%s"' % option, page)
         self.assertEqual(set(re.findall(r'name="decompiler" value="(\w+)"', page)), set(gui.imp.DECOMPILERS))
+        self.assertIn('class="titlebar pywebview-drag-region"', page,
+                      "macOS: the page covers the title bar, so it must give the window a drag area")
         for function in ("progress", "dropped", "compareProgress"):   # what Python calls on the page
             self.assertIn("window.%s = " % function, page)
 

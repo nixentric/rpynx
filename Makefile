@@ -75,6 +75,8 @@ SOURCES		:=	app/launcher app/ui app/diagnostics platform/input platform/filesyst
 INCLUDES	:=	app/launcher app/ui app/diagnostics platform/input platform/filesystem third_party/cjson \
 			third_party/lvgl build/lvgl/lvgl
 APP_TITLE	:=	Ren'Py Switch Loader
+# Homebrew Menu icon, made by scripts/icons.sh.
+ICON		:=	app/launcher/icon.jpg
 # LVGL (docs/LOADER_UI.md), built as a library by the `lvgl` target below.
 PROGRAM_LIBS	:=	-llvgl
 PROGRAM_LIBDIRS	:=	$(CURDIR)/build/lvgl/switch

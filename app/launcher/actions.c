@@ -194,8 +194,11 @@ static void on_action(rsl_action a)
         if (g.dialog_open) {
             if (a == RSL_ACT_CONFIRM || a == RSL_ACT_BACK)
                 g.dialog_open = false;
-        } else if (a == RSL_ACT_LEFT || a == RSL_ACT_RIGHT) {
-            g.sel = g.sel == DETAIL_LAUNCH ? DETAIL_CONTROLS : DETAIL_LAUNCH;
+        } else if (a == RSL_ACT_LEFT || a == RSL_ACT_RIGHT) {   /* Launch is rightmost, index 0 */
+            if (a == RSL_ACT_LEFT && g.sel < DETAIL_COUNT - 1)
+                g.sel++;
+            else if (a == RSL_ACT_RIGHT && g.sel > 0)
+                g.sel--;
         } else if (a == RSL_ACT_UP || a == RSL_ACT_DOWN) {
             ui_scroll(a == RSL_ACT_DOWN ? 1 : -1);
         } else if (a == RSL_ACT_BACK) {
@@ -203,9 +206,14 @@ static void on_action(rsl_action a)
         } else if (a == RSL_ACT_CONFIRM) {
             if (g.sel == DETAIL_LAUNCH)
                 launch(g.game);
-            else
+            else if (g.sel == DETAIL_CONTROLS)
                 game_controls(g.game, SCR_DETAIL);
+            else
+                open_picture(g.game);
         }
+        break;
+    case SCR_PICTURE:
+        picture_action(a);
         break;
     case SCR_REMAP:
         remap_action(a);
@@ -313,6 +321,7 @@ void frame(float dt)
     int item, tapped = ui_tap(&item);
     if (g.capture < 0 && (tapped >= 0 || item >= 0))
         tap(tapped, item);
+    picture_tick();
     if (g.screen == SCR_TEST) {
         if (!rsl_action_active(&g.in, RSL_ACT_BACK))
             m.back_held = false;

@@ -23,8 +23,8 @@ the normaliser relies on is checked against libnx's own constants by `_Static_as
 
 | Path | Role |
 |---|---|
-| `app/launcher/` | The loader: `main.c` start-up, display, main loop, `ui` log lines; `actions.c` input and navigation; `library.c` game scan, manifests, settings, launching; `controls.c` remapping (`launcher.h`, `loader.h`) |
-| `app/ui/` | Loader screens, LVGL 9.6 on the libnx framebuffer (`docs/LOADER_UI.md`): `ui.c` building blocks and screen frame; `ui_library.c` library, covers, details; `ui_controls.c` controller settings, test, diagnostics; `ui_pages.c` how to play and the Layout page: layout, backgrounds, accent colour (`ui_internal.h`) |
+| `app/launcher/` | The loader: `main.c` start-up, display, main loop, `ui` log lines; `actions.c` input and navigation; `library.c` game scan, manifests, settings, launching; `controls.c` remapping; `art.c` Change picture, an Album screenshot as a cover or backdrop (`launcher.h`, `loader.h`) |
+| `app/ui/` | Loader screens, LVGL 9.6 on the libnx framebuffer (`docs/LOADER_UI.md`): `ui.c` screen frame, building and updating screens; `ui_style.c` fonts, styles, accent; `ui_widgets.c` building blocks, touch; `ui_art.c` covers and backdrops; `ui_library.c` library layouts, + menu; `ui_detail.c` game details; `ui_picture.c` Change picture; `ui_controls.c` controller settings, test, diagnostics; `ui_pages.c` how to play and the Layout page: layout, backgrounds, accent colour (`ui_internal.h`) |
 | `app/diagnostics/log.c` | Line-flushed log at `sdmc:/switch/renpy-loader/logs/loader.log` plus an in-memory tail |
 | `platform/input/` | Normaliser, mapping engine, JSON persistence, libnx glue |
 | `platform/filesystem/` | Atomic writes with `.bak` fallback, bounded reads, `mkdir -p` |

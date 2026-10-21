@@ -22,6 +22,13 @@ void ui_cover_counts(int *decoded, int *failed);
 /* Up (-1) or down (1) on the detail page: scroll its facts. */
 void ui_scroll(int dir);
 
+/* Picture page: the part x, y, w x h of g.shot scaled into out, ow x oh
+ * XRGB8888 of the same aspect. What becomes a cover or a backdrop. */
+void ui_shot_part(int x, int y, int w, int h, uint32_t *out, int ow, int oh);
+
+/* Game i's cover or backdrop file changed: decode it again. */
+void ui_art_changed(int i);
+
 /* The last tap on the touchscreen, once: the action it asks for (-1 if
  * none) and in *item the item tapped (-1 if none): an index of g.sel, of
  * g.menu_sel while the menu is open, or the notice's OK. */

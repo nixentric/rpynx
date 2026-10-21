@@ -21,6 +21,7 @@ PyInstaller.__main__.run([
     "--name", "RSL Importer",
     "--add-data", os.path.join(here, "rsl_import_gui.html") + os.pathsep + ".",
     "--windowed",                                              # no console window
+    "--icon", os.path.join(here, "icon.ico" if sys.platform == "win32" else "icon.icns"),  # scripts/icons.sh
     "--onefile" if sys.platform == "win32" else "--onedir",    # macOS: a .app bundle
     "--noconfirm",
     "--distpath", os.path.join(repo, "dist", "importer"),
