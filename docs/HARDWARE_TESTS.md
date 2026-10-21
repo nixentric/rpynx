@@ -73,8 +73,8 @@ Setup:
 | H31 | Save / reload | Save in slot 1, quit to the library, relaunch, load slot 1 | Same scene restored; the save is in `saves/the_question/` |
 | H32 | HOME and sleep | Press HOME mid-dialogue, return; sleep for more than 1 minute, wake | Game resumes; audio and picture back; no stuck skip; no dialogue skipped |
 | H33 | Return to library | Main menu → Quit | The loader comes back |
-| H34 | Applet mode | Repeat H26 with the loader started from the album | Record: runs, or the error and memory figure |
-| H35 | Emergency combo | Hold + and − for 3 s in game | "Controls reset to default" notice |
+| H34 | Applet mode | Start the loader from the album, Library → the_question → A | The loader refuses with a message (full memory needed, hold R); no game starts, no console crash |
+| H35 | Emergency combo | Hold + and − for 3 s in game, then quit to the loader | "Controls reset to default and saved" notice; the loader also uses the defaults; `runtime.log` shows "emergency reset saved to …global.json: ok" |
 
 Record `logs/the_question/log.txt` and `logs/runtime.log` with every result.
 

@@ -76,13 +76,16 @@ static void on_applet(AppletHookType hook, void *param)
     }
 }
 
+#define GLOBAL_CONTROLS ROOT "/config/controller/global.json"
+static char g_controls_path[512] = GLOBAL_CONTROLS;   /* the profile this game loaded */
+
 static void load_controls(const char *game_id)
 {
-    char path[512], err[256];
+    char *path = g_controls_path, err[256];
     struct stat st;
-    snprintf(path, sizeof path, ROOT "/config/controller/games/%s.json", game_id);
+    snprintf(path, sizeof g_controls_path, ROOT "/config/controller/games/%s.json", game_id);
     if (stat(path, &st) != 0)
-        snprintf(path, sizeof path, ROOT "/config/controller/global.json");
+        snprintf(path, sizeof g_controls_path, GLOBAL_CONTROLS);
     rsl_input_config cfg;
     rsl_load_result r = rsl_config_load(path, &cfg, err, sizeof err);
     rsl_log("controls %s: %s%s%s", path,
@@ -110,6 +113,19 @@ static PyObject *nx_applet_type(PyObject *self, PyObject *unused)
 
 /* -> ([(kind, action), ...], cursor_x, cursor_y, cursor_moved)
  * kind: 0 down, 1 up, 2 repeat, 3 emergency combo. Cursor is normalised. */
+/* The emergency combo in a game also saves the defaults, to this game's profile and to the
+ * loader's global.json: a reset that lasted only until the loader came back left the same
+ * unusable mapping there (user report, run 26). rsl_config_save keeps each old file as .bak. */
+static void save_reset_controls(const rsl_input_config *cfg)
+{
+    const char *paths[2] = { g_controls_path, strcmp(g_controls_path, GLOBAL_CONTROLS) ? GLOBAL_CONTROLS : NULL };
+    for (int i = 0; i < 2 && paths[i]; i++) {
+        char err[256] = "";
+        bool ok = rsl_config_save(paths[i], cfg, err, sizeof err);
+        rsl_log("emergency reset saved to %s: %s%s", paths[i], ok ? "ok" : "failed - ", ok ? "" : err);
+    }
+}
+
 /* One runtime.log line per press (not per repeat): the action and the physical button(s)
  * that fired it, so a remap can be checked in a game from the log alone. */
 static void log_input_events(const rsl_input *in)
@@ -118,6 +134,7 @@ static void log_input_events(const rsl_input *in)
         const rsl_event *e = &in->events[i];
         if (e->type == RSL_EV_EMERGENCY) {
             rsl_log("input: emergency combo, default controls restored");
+            save_reset_controls(&in->cfg);
         } else if (e->type == RSL_EV_ACTION_DOWN) {
             char names[96] = "";
             size_t n = 0;
@@ -766,6 +783,16 @@ static int run_game(struct job *job, const char *game, const char *savedir_arg, 
     if (stat(ROOT "/config/power-saver", &fst) == 0 || stat(flag, &fst) == 0) {
         setenv("RENPY_GL_VSYNC", "2", 1);
         rsl_log("power saver: 30 fps cap");
+    }
+    AppletType applet = appletGetAppletType();
+    if (applet != AppletType_Application && applet != AppletType_SystemApplication) {
+        /* The loader refuses this too; this covers a runtime started some other way. A game
+         * in applet mode crashed the whole console, twice (hardware runs 8 and 26). */
+        rsl_log("runtime start: game %s refused, applet type %d (applet mode)", basedir, (int)applet);
+        show_error("Ren'Py games cannot start in applet mode: they crash the whole console.",
+                   "The loader was opened from the Album, with little memory. Close it, then hold R "
+                   "while opening any game to start the loader with full memory.");
+        return 1;
     }
     tsInitialize();
     psmInitialize();

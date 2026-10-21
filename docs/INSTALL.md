@@ -19,9 +19,10 @@ sdmc:/switch/renpy-loader/
 ```
 
 **Memory:** started from the album, homebrew runs as a library applet with limited memory.
-Ren'Py games will need the full application memory. Start the Homebrew Menu by holding R
-while launching an installed game (title override). The Diagnostics screen shows which mode
-you are in.
+Ren'Py games need the full application memory: start the Homebrew Menu by holding R while
+launching an installed game (title override). The Diagnostics screen shows which mode you are
+in. **The loader does not start games in applet mode:** there, a game crashed the whole console
+twice (hardware runs 8 and 26). The Python self-test still runs.
 
 **Python self-test:** Diagnostics → A starts the runtime, runs the Python self-test, and
 returns to the loader when you press +. This needs the loader to be started from the
@@ -61,8 +62,9 @@ cursor speed and acceleration, repeat timing, stick roles and cursor visibility 
 **Per-game profile:** in the Game Library, select a game and press X.
 
 **Emergency recovery:** hold **+ and − together for 3 seconds** anywhere. Default controls are
-restored immediately and the settings screen opens; press + to save them. No setting can
-disable this. A single detached Joy-Con has only one of + / −, so it cannot do this.
+restored immediately. In the loader the settings screen opens; press + to save them. In a game
+they are saved at once, to the game's profile and to the loader's `global.json`, so the loader
+uses them too; each previous file is kept as `.bak`. No setting can disable this. A single detached Joy-Con has only one of + / −, so it cannot do this.
 
 Profiles are plain JSON (format in `config/profiles/default.json`). A damaged file is ignored:
 the loader falls back to the previous version (`.bak`), then to defaults.
