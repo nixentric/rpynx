@@ -37,10 +37,15 @@ void rsl_heap_audit(const char *when)
     rsl_log("heap audit (%s): uncached %llu KiB (reset, %d failed), borrowed %llu KiB, device-mapped %llu KiB, locked %llu KiB", when,
             (unsigned long long)(uncached >> 10), reset_failed, (unsigned long long)(borrowed >> 10),
             (unsigned long long)(device >> 10), (unsigned long long)(locked >> 10));
-    if (envIsSyscallHinted(0x66)) {
-        s32 n = 0;
-        u64 tids[64];
-        if (R_SUCCEEDED(svcGetThreadList(&n, tids, 64, INVALID_HANDLE)))
-            rsl_log("heap audit (%s): %d thread(s) alive (1 = only this one)", when, (int)n);
+    /* Threads charged to this process's resource limit: in application mode that is this
+     * process alone, in applet mode it is shared with the other applets. (svcGetThreadList
+     * without a debug handle counts every thread on the console: 575 in runs 9-21.) */
+    u64 limit = INVALID_HANDLE;
+    s64 threads = 0;
+    if (envIsSyscallHinted(0x31) && R_SUCCEEDED(svcGetInfo(&limit, InfoType_ResourceLimit, INVALID_HANDLE, 0)) &&
+        limit != INVALID_HANDLE) {
+        if (R_SUCCEEDED(svcGetResourceLimitCurrentValue(&threads, (Handle)limit, LimitableResource_Threads)))
+            rsl_log("heap audit (%s): %lld thread(s) in this process's resource limit", when, (long long)threads);
+        svcCloseHandle((Handle)limit);
     }
 }

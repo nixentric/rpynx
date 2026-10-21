@@ -496,10 +496,11 @@ static void last_line(const char *path, char *out, size_t len)
  * runtime.log, so a stall shows where it is stuck. In script mode also
  * service applet messages and show progress (the only thread that touches the
  * console: the libnx console is not thread-safe). */
-/* Heat telemetry: SoC and board temperature, how busy this core is, and the
+/* Heat telemetry: SoC and board temperature, how busy each CPU core is, and the
  * battery level, logged every TELEMETRY_S seconds of play. Measures whether
  * an optimisation actually lowers temperature (user report: "it gets warm"). */
 #define TELEMETRY_S 30
+#define TELEMETRY_CORES 3   /* an application runs on cores 0-2; core 3 is the system's */
 
 static float read_temp(TsDeviceCode code, TsLocation legacy)
 {
@@ -517,23 +518,44 @@ static float read_temp(TsDeviceCode code, TsLocation legacy)
     return t;
 }
 
-static void log_telemetry(int secs, u64 *last_idle, u64 *last_tick)
+/* Busy % per core since the last call, as " 12% 40% 3%"; "n/a" on the first call or for
+ * a core this thread may not run on. A core's idle ticks can only be read from that core
+ * (libnx svc.h), so the thread visits each one, then gets its own affinity back. */
+static void cores_busy(char *out, size_t size, u64 last_idle[], u64 last_tick[])
 {
-    u64 idle = 0, tick = armGetSystemTick();
-    svcGetInfo(&idle, InfoType_IdleTickCount, INVALID_HANDLE, (u64)svcGetCurrentProcessorNumber());
-    int busy = -1;
-    if (*last_tick && tick > *last_tick)
-        busy = 100 - (int)(100 * (idle - *last_idle) / (tick - *last_tick));
-    *last_idle = idle;
-    *last_tick = tick;
+    s32 core0;
+    u64 mask0;
+    size_t n = 0;
+    out[0] = 0;
+    if (R_FAILED(svcGetThreadCoreMask(&core0, &mask0, CUR_THREAD_HANDLE)))
+        return;
+    for (int c = 0; c < TELEMETRY_CORES; c++) {
+        u64 idle = 0, tick = 0;
+        bool ok = R_SUCCEEDED(svcSetThreadCoreMask(CUR_THREAD_HANDLE, c, 1u << c)) &&
+                  svcGetCurrentProcessorNumber() == (u32)c &&
+                  R_SUCCEEDED(svcGetInfo(&idle, InfoType_IdleTickCount, INVALID_HANDLE, (u64)c));
+        tick = armGetSystemTick();
+        if (ok && last_tick[c] && tick > last_tick[c])
+            n += snprintf(out + n, size - n, " %d%%", 100 - (int)(100 * (idle - last_idle[c]) / (tick - last_tick[c])));
+        else
+            n += snprintf(out + n, size - n, " n/a");
+        last_idle[c] = ok ? idle : 0;
+        last_tick[c] = ok ? tick : 0;
+    }
+    svcSetThreadCoreMask(CUR_THREAD_HANDLE, core0, (u32)mask0);
+}
+
+static void log_telemetry(int secs, u64 last_idle[], u64 last_tick[])
+{
+    char busy[40];
+    cores_busy(busy, sizeof busy, last_idle, last_tick);
     u32 battery = 0;
     PsmChargerType charger = PsmChargerType_Unconnected;
     psmGetBatteryChargePercentage(&battery);
     psmGetChargerType(&charger);
-    rsl_log("telemetry %4d s: SoC %.1f C, board %.1f C, core %d busy %d%%, battery %u%%%s, %s",
+    rsl_log("telemetry %4d s: SoC %.1f C, board %.1f C, cores 0-2 busy%s, battery %u%%%s, %s",
             secs, read_temp(TsDeviceCode_LocationExternal, TsLocation_External),
-            read_temp(TsDeviceCode_LocationInternal, TsLocation_Internal),
-            (int)svcGetCurrentProcessorNumber(), busy, (unsigned)battery,
+            read_temp(TsDeviceCode_LocationInternal, TsLocation_Internal), busy, (unsigned)battery,
             charger != PsmChargerType_Unconnected ? " (charging)" : "",
             appletGetOperationMode() == AppletOperationMode_Console ? "docked" : "handheld");
 }
@@ -542,7 +564,7 @@ static void watch_python(struct job *j, const int *dump_at, int n_dumps, const c
 {
     uint64_t start = armGetSystemTick();
     int next = 0, next_telemetry = 0;
-    u64 last_idle = 0, last_tick = 0;
+    u64 last_idle[TELEMETRY_CORES] = { 0 }, last_tick[TELEMETRY_CORES] = { 0 };
     char line[80];
     while (!j->done) {
         if (progress_file && !appletMainLoop())
@@ -563,7 +585,7 @@ static void watch_python(struct job *j, const int *dump_at, int n_dumps, const c
             }
         }
         if (!progress_file && secs >= next_telemetry) {
-            log_telemetry(secs, &last_idle, &last_tick);
+            log_telemetry(secs, last_idle, last_tick);
             next_telemetry += TELEMETRY_S;
         }
         if (progress_file) {
