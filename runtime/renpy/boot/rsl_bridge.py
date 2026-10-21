@@ -85,8 +85,14 @@ def _where():
         return "unknown (%r)" % e
 
 
+_report_load = False
+
+
 def _after_load():
-    print("rsl: loaded, now at %s" % _where(), flush=True)
+    # Ren'Py runs this inside its _after_load label (00start.rpy), so the game's line is
+    # only current at the next interaction: step() reports it there (run 25 logged 00start).
+    global _report_load
+    _report_load = True
 
 
 def _log_saves():
@@ -181,10 +187,13 @@ def _post_mouse_button(down):
 def step():
     """Read the controllers once and post the resulting Ren'Py events.
     Returns True if there was any controller activity."""
-    global _touch_pointer
+    global _touch_pointer, _report_load
     interface = renpy.display.interface
     if interface is None or not interface.started:
         return False
+    if _report_load:
+        _report_load = False
+        print("rsl: loaded, now at %s" % _where(), flush=True)
 
     events, cx, cy, moved = _rslnx.input_poll()
     for kind, action in events:

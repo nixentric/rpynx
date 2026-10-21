@@ -76,7 +76,8 @@ Third-party code in this repository: cJSON 1.7.18 (MIT, `third_party/cjson/LICEN
 The built `.nro` files also contain third-party code under its own licenses, which MIT does
 not replace:
 - `renpy-loader.nro`: libnx (ISC) and cJSON (MIT).
-- `renpy-runtime.nro`: CPython (PSF), Ren'Py (MIT, with LGPL-derived parts),
+- `renpy-runtime.nro`: CPython (PSF), Ren'Py (MIT, with LGPL-derived parts), the Ren'Py SDK's
+  fonts (Source Han Sans Lite and Vazirmatn, SIL OFL 1.1),
   SDL2 (zlib), Mesa (MIT), libnx (ISC) and others.
   - It also statically links devkitPro's switch-ffmpeg, which is **built with `--enable-gpl`**.
   - So the runtime binary as a whole is covered by the **GPL (version 2 or later)**.

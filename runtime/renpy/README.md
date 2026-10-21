@@ -72,6 +72,12 @@ files the official SDK ships (CPython 3.12 bytecode, magic 3531) into `renpy-bas
 
 `ssl` is not available, so `requests` cannot make HTTPS calls on the Switch.
 
+`renpy-base/sdk-fonts` holds the SDK's two fonts, as in the SDK itself:
+`SourceHanSansLite.ttf` (Adobe Source Han Sans, subset) and `Vazirmatn-RD-UI-Light.ttf`,
+both under the SIL Open Font License 1.1 (see the SDK's `doc/license.html`). Games copied
+from the SDK, such as The Question, load them through `config.renpy_base + "/sdk-fonts"`.
+A game built with the SDK's distribute tool carries its own copy in `game/`.
+
 ## Boot and controller bridge (`boot/`)
 
 - **`switch_main.py`** is run instead of `renpy.py`. It loads `renpy.py` unchanged, points

@@ -94,4 +94,10 @@ tar -xjf "$SDKTB" -C "$B/sdklib" $(for m in $EXTRA; do echo "$SDKLIB/$m"; done)
 for m in $EXTRA; do cp -R "$B/sdklib/$SDKLIB/$m" "$D/renpy-base/"; done
 find "$D/renpy-base" -name "test_*.pyc" -path "*/ecdsa/*" -delete
 echo "added SDK packages: $EXTRA"
+
+# The SDK's fonts (Source Han Sans Lite for Chinese/Japanese/Korean, Vazirmatn; SIL OFL 1.1).
+# Games copied straight from the SDK (The Question, the Tutorial) add renpy_base/sdk-fonts
+# to their search path; without it their preferences screen stopped the game (run 25).
+tar -xjf "$SDKTB" -C "$B/sdklib" "renpy-$RENPY_VER-sdkarm/sdk-fonts"
+rm -rf "$D/renpy-base/sdk-fonts" && cp -R "$B/sdklib/renpy-$RENPY_VER-sdkarm/sdk-fonts" "$D/renpy-base/"
 ls -l "$D/lib"
