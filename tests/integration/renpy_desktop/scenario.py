@@ -90,6 +90,14 @@ def steps():
     yield from until("virtual cursor moves Ren'Py's mouse", at_target, 5)
     _rslnx.tap("click")
     yield from until("cursor click on Start begins the game", lambda: screen("say"), 30)
+
+    ev = renpy.pygame.event
+    ev.post(ev.Event(renpy.pygame.MOUSEBUTTONDOWN, pos=(600, 300), button=1, which=0xFFFFFFFF, touch=True))
+    ev.post(ev.Event(renpy.pygame.MOUSEBUTTONUP, pos=(600, 300), button=1, which=0xFFFFFFFF, touch=True))
+    yield from until("a touch hides the cursor", lambda: not renpy.display.interface.is_mouse_visible(), 5)
+    yield from pause(0.5)   # let the touch's button-up arrive first: it hides the cursor too
+    _rslnx.move_cursor(0.5, 0.5)
+    yield from until("the right stick shows it again", lambda: renpy.display.interface.is_mouse_visible(), 5)
     yield from pause(0.5)
     shot("02-dialogue.png")
 
@@ -123,6 +131,11 @@ def steps():
 
     _rslnx.tap("game_menu")
     yield from until("game menu (+) opens the save screen", lambda: screen("save"))
+
+    def side_menu_focused():
+        action = getattr(renpy.display.focus.get_focused(), "action", None)
+        return isinstance(action, renpy.store.ShowMenu) and action.screen == "save"
+    yield from until("game menu starts on its side menu (Save), not a slot", side_menu_focused, 5)
     yield from pause(0.5)
     shot("05-game-menu.png")
     _rslnx.tap("back")

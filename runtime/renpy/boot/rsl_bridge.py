@@ -18,6 +18,7 @@ turns those actions into Ren'Py events, on Ren'Py's own thread:
 Ren'Py's own SDL game-controller support is disabled; otherwise every press
 would arrive twice (and with SDL's position-based A/B naming).
 """
+import os
 import time
 
 import renpy
@@ -126,6 +127,9 @@ def _setup_display():
     """Runs from Interface.start(), once the game's config exists."""
     config = renpy.config
     _log_saves()
+    _install_touch_cursor()
+    _install_focus_overlap()
+    _install_open_notice()
     if _close_dying_streams not in config.python_exit_callbacks:
         config.python_exit_callbacks.append(_close_dying_streams)
     # Ren'Py also matches these names against ordinary key/mouse events, and
@@ -177,6 +181,7 @@ def _post_mouse_button(down):
 def step():
     """Read the controllers once and post the resulting Ren'Py events.
     Returns True if there was any controller activity."""
+    global _touch_pointer
     interface = renpy.display.interface
     if interface is None or not interface.started:
         return False
@@ -213,6 +218,8 @@ def step():
         elif action in NAMED and kind == DOWN:
             renpy.exports.queue_event(NAMED[action])
 
+    if moved:
+        _touch_pointer = False   # Ren'Py may take the warp's MOUSEMOTION with event.get()
     if moved and renpy.display.draw is not None:
         renpy.display.draw.set_mouse_pos(cx * renpy.config.screen_width, cy * renpy.config.screen_height)
     _focus_first_button(moved)
@@ -222,6 +229,7 @@ def step():
 
 
 _auto_focused = None   # the screen set whose first button was already selected
+_last_shown = None     # the screen set of the previous call
 NOT_CONTENT = {"say", "nvl", "notify", "skip_indicator", "quick_menu", "_performance", "_trace_screen"}
 
 
@@ -232,7 +240,8 @@ def _screens():
 
 
 def _shown_screens():
-    return tuple(sorted(str(sd.tag) for sd in _screens()))
+    # Names, not tags: every game menu screen (save, load, history, ...) has the tag "menu".
+    return tuple(sorted(str(sd.screen_name[0]) for sd in _screens()))
 
 
 def _content_buttons():
@@ -264,8 +273,10 @@ def _focus_first_button(moved):
     debug_screen made its quick menu's Back look like content, and A went back
     instead of advancing (run 18). Not while a text field is active (the first
     button may be "Use default name") or the virtual cursor is in use."""
-    global _auto_focused
+    global _auto_focused, _last_shown
     shown = _shown_screens()
+    if shown != _last_shown:   # screens changed: a menu opened again is a new menu
+        _last_shown, _auto_focused = shown, None
     if moved:
         _auto_focused = shown
     focus = renpy.display.focus
@@ -279,17 +290,163 @@ def _focus_first_button(moved):
     ids = _content_buttons()
     if not ids:
         return
-    for f in focus.focus_list:
-        if id(f.widget) in ids and f.x is not None and f.widget.style.keyboard_focus:
-            _auto_focused = shown
-            focus.pending_focus_type = "keyboard"
-            focus.change_focus(f)
-            return
+    candidates = [f for f in focus.focus_list
+                  if id(f.widget) in ids and f.x is not None and f.widget.style.keyboard_focus]
+    if renpy.store._menu:
+        # In a game menu, start on its side menu ("Save" on the save screen), not on the
+        # first save slot: the slots come first in the standard screens (user request).
+        candidates = [f for f in candidates if _current_menu_entry(f.widget)] + candidates
+    if candidates:
+        _auto_focused = shown
+        focus.pending_focus_type = "keyboard"
+        focus.change_focus(candidates[0])
+
+
+def _current_menu_entry(widget):
+    """True for the game menu's navigation button of the screen shown now: a selected
+    button whose action is ShowMenu, as the standard navigation screen makes them."""
+    action = getattr(widget, "action", None)
+    actions = action if isinstance(action, list) else [action]
+    return (any(isinstance(a, renpy.store.ShowMenu) for a in actions)
+            and renpy.display.behavior.is_selected(action))
+
+
+# The last mouse event came from the touchscreen (SDL marks those touch=True): no
+# cursor then, a finger needs none (user request). The right stick brings it back.
+_touch_pointer = False
+
+
+def _note_pointer(ev):
+    global _touch_pointer
+    if ev.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+        _touch_pointer = getattr(ev, "touch", False)
+    return ev
+
+
+def _is_mouse_visible(self):
+    return not _touch_pointer and _orig_is_mouse_visible(self)
+
+
+_orig_is_mouse_visible = None
+
+
+def _focus_nearest(fx0, fy0, fx1, fy1, tx0, ty0, tx1, ty1, line_dist, condition, *rest):
+    """Ren'Py's D-pad navigation only goes to a button whose box starts past the selected
+    one's edge. Buttons taller than the space between them overlap, so the next one was
+    skipped (Forbidden Fantasy: down from New Game went past Continue, run 24). Also accept
+    a box that overlaps but whose centre is clearly further that way; Ren'Py's distance
+    still picks the nearest."""
+    axis = 0 if fx0 != tx0 else 1
+    sign = 1 if (fx0 > tx0 if axis == 0 else fy0 > ty0) else -1
+
+    def further(old, new):
+        if condition(old, new):
+            return True
+        old_c = old[axis] + old[axis + 2] / 2.0
+        new_c = new[axis] + new[axis + 2] / 2.0
+        return (new_c - old_c) * sign > 0.25 * max(old[axis + 2], new[axis + 2])
+
+    return _orig_focus_nearest(fx0, fy0, fx1, fy1, tx0, ty0, tx1, ty1, line_dist, further, *rest)
+
+
+_orig_focus_nearest = None
+
+
+def _install_focus_overlap():
+    global _orig_focus_nearest
+    focus = renpy.display.focus
+    if focus.focus_nearest is not _focus_nearest:   # focus.py calls it by its global name
+        _orig_focus_nearest = focus.focus_nearest
+        focus.focus_nearest = _focus_nearest
+
+
+# Opening a website or a folder. Ren'Py's open_url() tries webbrowser and stays silent
+# when there is none, so a link did nothing; Forbidden Fantasy's "deluxe" button ran
+# subprocess.Popen(["xdg-open", folder]), and the Switch cannot start processes, so the
+# game stopped with an error (run 24). Both show this notice instead.
+_OPENERS = {"xdg-open", "open", "explorer", "explorer.exe", "start", "cmd", "cmd.exe"}
+
+
+def _cannot_open_screen(target="", what="", **kwargs):
+    ui, store = renpy.ui, renpy.store
+    hide = store.Hide("_rsl_cannot_open")
+    ui.add(store.Solid("#000000b0"))
+    ui.frame(xalign=0.5, yalign=0.5, xmaximum=1000, padding=(40, 30), background=store.Solid("#1d1e22"))
+    ui.vbox(spacing=24)
+    if what == "website":
+        ui.text("This link opens a website, which the Switch cannot show here. "
+                "To visit it, open this address on a phone or computer:",
+                substitute=False, color="#f0f1f4", size=28)
+    else:
+        ui.text("This opens a folder or file on a computer, which the Switch cannot do:",
+                substitute=False, color="#f0f1f4", size=28)
+    ui.text(str(target).replace("{", "{{"), substitute=False, color="#25d0f2", size=26)
+    ui.textbutton("OK", action=hide, xalign=0.5)
+    ui.close()
+    ui.key("game_menu", action=hide)
+    ui.key("rollback", action=hide)
+
+
+def _cannot_open(target):
+    target = str(target)
+    print("rsl: cannot open on the Switch: %s" % target, flush=True)
+    what = "website" if target.lower().startswith(("http:", "https:", "www.")) else "file"
+    try:
+        renpy.exports.show_screen("_rsl_cannot_open", target=target, what=what)
+        renpy.exports.restart_interaction()
+    except Exception as e:   # a notice must never stop the game
+        print("rsl: could not show the notice: %r" % e, flush=True)
+
+
+def _open_url(url, *args, **kwargs):
+    _cannot_open(url)
+
+
+def _install_open_notice():
+    if renpy.display.screen.get_screen_variant("_rsl_cannot_open") is None:   # gone after a reload
+        renpy.exports.define_screen("_rsl_cannot_open", _cannot_open_screen, modal="True", zorder="1000")
+    renpy.exports.open_url = _open_url
+    try:   # never let these stop the bridge from loading
+        import subprocess
+        import webbrowser
+    except Exception as e:
+        print("rsl: no subprocess/webbrowser hooks: %r" % e, flush=True)
+        return
+    webbrowser.open = webbrowser.open_new = webbrowser.open_new_tab = lambda url, *a, **k: _open_url(url) or True
+    if getattr(subprocess.Popen, "_rsl", False):
+        return
+
+    class Popen(subprocess.Popen):
+        """Turns "open this folder/link" commands into the notice and behaves as a process
+        that already finished; anything else runs (and fails) as before."""
+        _rsl = True
+
+        def __init__(self, args, *a, **kw):
+            argv = args.split() if isinstance(args, str) else list(args)
+            if argv and os.path.basename(str(argv[0])).lower() in _OPENERS:
+                _cannot_open(argv[-1] if len(argv) > 1 else argv[0])
+                self.args, self.returncode, self.pid = args, 0, None
+                self.stdin = self.stdout = self.stderr = None
+                self._child_created = self._communication_started = False
+                return
+            super().__init__(args, *a, **kw)
+
+    subprocess.Popen = Popen
+
+
+def _install_touch_cursor():
+    """Runs from _setup_display: renpy.display.core is not imported yet when this loads.
+    Both the software cursor (MouseDisplayable) and the hardware one ask this method."""
+    global _orig_is_mouse_visible
+    Interface = renpy.display.core.Interface
+    if Interface.is_mouse_visible is not _is_mouse_visible:
+        _orig_is_mouse_visible = Interface.is_mouse_visible
+        Interface.is_mouse_visible = _is_mouse_visible
 
 
 def poll():
     step()
-    return _orig_poll()
+    return _note_pointer(_orig_poll())
 
 
 # Ren'Py blocks in wait() when idle. Read the controllers every 16 ms while
@@ -307,7 +464,7 @@ def wait():
             _last_activity = now
         ev = _orig_poll()
         if ev.type != pygame.NOEVENT:
-            return ev
+            return _note_pointer(ev)
         # _rslnx.wait_event releases the GIL while SDL waits.
         _rslnx.wait_event(ACTIVE_MS if now - _last_activity < IDLE_AFTER else IDLE_MS)
 

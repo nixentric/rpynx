@@ -43,7 +43,7 @@
 /* Ren'Py recurses deeply (displayables, pickling); the loader-provided main
  * thread stack is small, so Python runs on its own thread. */
 #define PY_STACK    (8 * 1024 * 1024)
-#define THREAD_WAIT_MS 3000   /* for the game's threads to finish before Python shuts down */
+#define THREAD_WAIT_MS 1000   /* for the game's threads to finish before Python shuts down */
 
 static size_t wait_threads(int ms);
 
@@ -358,6 +358,15 @@ static int run_python(struct job *j)
 /* Shut SDL down on the thread that initialised it (Ren'Py's): from the main
  * thread SDL_Quit() hung forever after the game quit (hardware runs 5-6).
  * Each subsystem is logged so a remaining hang names its culprit. */
+/* The system's error dialog. Not the console: once Mesa and SDL have shut down it cannot
+ * get a framebuffer and aborts (hardware runs 23-24). */
+static void show_error(const char *dialog, const char *details)
+{
+    ErrorApplicationConfig c;
+    if (R_SUCCEEDED(errorApplicationCreate(&c, dialog, details)))
+        errorApplicationShow(&c);
+}
+
 static void quit_sdl(void)
 {
     static const struct { Uint32 flag; const char *name; } subs[] = {
@@ -788,13 +797,10 @@ static int run_game(struct job *job, const char *game, const char *savedir_arg, 
     rsl_heap_audit("runtime exit");
 
     if (job->rc != 0) {
-        consoleInit(NULL);
-        printf("Ren'Py stopped with status %d.\n\nDetails are in:\n", job->rc);
-        printf("  %s/python.txt\n  %s/log.txt\n  %s/traceback.txt\n  " ROOT "/logs/runtime.log\n\n",
-               logdir, logdir, logdir);
-        printf("Press + to %s.\n", ret ? "return to the library" : "exit");
-        wait_for_plus();
-        consoleExit(NULL);
+        char details[1024];
+        snprintf(details, sizeof details, "Ren'Py stopped with status %d. Details are in traceback.txt, "
+                 "log.txt and python.txt in %s, and in " ROOT "/logs/runtime.log.", job->rc, logdir);
+        show_error("The game stopped with an error.", details);
     }
     return job->rc;
 }
@@ -862,14 +868,9 @@ int main(int argc, char **argv)
          * way to stop it: close the software rather than return to the library. */
         rsl_log("%zu thread(s) still running: closing the software instead of returning to the library",
                 g_threads_stuck);
-        /* The system's error dialog, not the console: after Mesa and SDL shut down the
-         * console could not get a framebuffer and aborted (hardware run 23). */
-        ErrorApplicationConfig dlg;
-        if (R_SUCCEEDED(errorApplicationCreate(&dlg, "A thread of the game did not stop. "
-                "The software closes now to avoid a crash in the next game.",
-                "Start the loader again from the HOME menu (hold R while starting a game). "
-                "Details are in " ROOT "/logs/runtime.log.")))
-            errorApplicationShow(&dlg);
+        show_error("A thread of the game did not stop. The software closes now to avoid a crash in the next game.",
+                   "Start the loader again from the HOME menu (hold R while starting a game). "
+                   "Details are in " ROOT "/logs/runtime.log.");
         appletUnhook(&hook);
         romfsExit();
         rsl_log_close();

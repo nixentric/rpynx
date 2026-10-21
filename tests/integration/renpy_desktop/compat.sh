@@ -11,6 +11,9 @@
 #  overlays    Forbidden Fantasy's debug_screen + overlay quick menu: Back is never
 #              selected for the player (run 18)
 #  menufocus   the main menu's first button is selected and the cursor hidden (runs 14-15)
+#  links       a website link and a "open folder" button show a notice with OK (run 24)
+#  stacked     buttons whose boxes overlap: D-pad down goes to the next one, not past
+#              it (Forbidden Fantasy's main menu, run 24)
 # Needs build/test/sdk from tests/integration/renpy_desktop/run.sh.
 # usage (host): tests/integration/renpy_desktop/compat.sh
 set -euo pipefail
@@ -57,6 +60,13 @@ check "FF-like overlays: A advances dialogue, never the quick menu Back" \
     "$(RSL_PART=dialogue RSL_TAPS=4:confirm run ov-dialogue overlays bridge)" "advanced"
 check "FF-like overlays: A picks the first card, not the quick menu Back" \
     "$(RSL_PART=cards RSL_TAPS=3:confirm run ov-cards overlays bridge)" "picked Elven Archer"
+check "overlapping buttons: D-pad down reaches the next one" \
+    "$(RSL_TAPS=2:down,4:confirm run stacked stacked bridge)" "picked='"'"'Continue'"'"'"
+check "overlapping buttons: down twice reaches the third" \
+    "$(RSL_TAPS=2:down,3:down,5:confirm run stacked2 stacked bridge)" "picked='"'"'Supporter Content'"'"'"
+check "website link and folder button: notice with OK selected, OK closes it" \
+    "$(RSL_TAPS=2:confirm,4:confirm,5:down,6:confirm,8:confirm run links links bridge)" \
+    "seen=['"'"'hidden'"'"', '"'"'shown, OK selected'"'"', '"'"'hidden'"'"', '"'"'shown, OK selected'"'"', '"'"'hidden'"'"']"
 menu_plain=$(run menu-plain menufocus plain)
 menu_bridge=$(run menu-bridge menufocus bridge)
 check "plain 8.5.3 main menu starts unfocused, mouse shown (repro)" "$menu_plain" "focused=None mouse=True"
