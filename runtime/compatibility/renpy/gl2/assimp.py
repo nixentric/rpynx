@@ -1,4 +1,4 @@
-# Ren'Py Switch Loader compatibility module. Replaces renpy/gl2/assimp.pyx.
+# rpynx compatibility module. Replaces renpy/gl2/assimp.pyx.
 #
 # Ren'Py imports renpy.gl2.assimp unconditionally, but the Open Asset Importer
 # (assimp, C++) is not available for the Nintendo Switch. Everything Ren'Py
@@ -16,7 +16,7 @@ loader = None
 loader_lock = threading.Lock()
 
 UNSUPPORTED = (
-    "GLTFModel is not supported by Ren'Py Switch Loader: the assimp 3D model "
+    "GLTFModel is not supported by rpynx: the assimp 3D model "
     "library is not available on the Nintendo Switch."
 )
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ren'Py Switch Loader importer (Milestone 5).
+"""rpynx importer (Milestone 5).
 
 Analyses a DRM-free Ren'Py game (folder, .zip, .7z or .rar), writes a compatibility
 report and, with --out, an SD-ready tree:
@@ -25,7 +25,7 @@ from rsl import DECOMPILERS, ERRORS, export, ID_MAX, load, make_art, make_id, re
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Analyse a Ren'Py game and export it for the Switch loader.")
+    ap = argparse.ArgumentParser(description="Analyse a Ren'Py game and export it for rpynx on the Switch.")
     ap.add_argument("source", help="game folder, .zip, .7z or .rar")
     ap.add_argument("--out", help="export root, e.g. the SD card, or ftp://HOST:PORT for the Switch over "
                                   "sphaira's FTP server; writes switch/renpy-loader/games/<id>")

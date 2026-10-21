@@ -278,7 +278,7 @@ int main(int argc, char **argv)
         if (art[k])
             backdrop(k, covers, art[k]);
 
-    rsl_log("Ren'Py Switch Loader 0.1.0, Application (full memory), Handheld");
+    rsl_log("rpynx 0.1.0, Application (full memory), Handheld");
     rsl_log("heap audit (loader start): 0 leaked blocks");
     rsl_log("controller config: loaded");
     rsl_log("library scan: 12 folder(s)");

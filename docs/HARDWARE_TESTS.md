@@ -20,7 +20,7 @@ matching part of `sdmc:/switch/renpy-loader/logs/loader.log`.
 
 | # | Test | Steps | Expected |
 |---|---|---|---|
-| H1 | Cold launch | Start from hbmenu | Main menu shows version, Handheld/Docked, applet type. `loader.log` gets "Ren'Py Switch Loader 0.1.0 …" |
+| H1 | Cold launch | Start from hbmenu | Main menu shows version, Handheld/Docked, applet type. `loader.log` gets "rpynx 0.1.0 …" |
 | H2 | Folders created | After H1, browse SD | `logs/`, `config/controller/games/`, `games/` exist under `sdmc:/switch/renpy-loader/` |
 | H3 | A/B orientation | Controller Test, press A, then B | A shows `confirm`, B shows `back`. Physical A is the right face button |
 | H4 | Every button | Controller Test, press each button incl. ZL/ZR, +/−, stick clicks, D-pad | Each shows its own name under Physical, nothing else lights up |

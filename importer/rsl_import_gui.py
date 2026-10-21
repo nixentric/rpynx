@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ren'Py Switch Loader importer, as a window (pywebview: the system's web view).
+"""rpynx importer, as a window (pywebview: the system's web view).
 
 A thin layer over rsl_import.py. The page (rsl_import_gui.html) calls Api through
 window.pywebview.api; every check and every copy is rsl_import's. pywebview runs each call
@@ -250,7 +250,7 @@ def main():
             pass
     api = Api()
     with open(PAGE, encoding="utf-8") as f:
-        window = webview.create_window("Ren'Py Switch Loader importer", html=f.read(), js_api=api,
+        window = webview.create_window("rpynx importer", html=f.read(), js_api=api,
                                        width=1080, height=780, min_size=(820, 600))
     api._window = window
     if sys.platform == "darwin":

@@ -1,4 +1,4 @@
-"""Ren'Py Switch Loader: game entry point, run instead of renpy.py.
+"""rpynx: game entry point, run instead of renpy.py.
 
 Ren'Py lets a distribution customise the path_to_* functions of its launcher
 script (renpy.py); this loads that script unchanged, overrides where logs go

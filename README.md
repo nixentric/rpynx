@@ -1,4 +1,13 @@
-# Ren'Py Switch Loader
+<p align="center">
+  <img src="app/launcher/icon.jpg" width="160" alt="rpynx">
+</p>
+
+<h1 align="center">rpynx</h1>
+
+<p align="center">
+  <b>Play Ren'Py games on Switch</b><br>
+  <sub>Unofficial homebrew. Not affiliated with Ren'Py or Nintendo.</sub>
+</p>
 
 A Nintendo Switch homebrew loader (`.nro`) meant to run legally obtained, DRM-free Ren'Py
 games from the SD card, with a first-class remappable controller system.

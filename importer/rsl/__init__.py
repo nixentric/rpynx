@@ -1,4 +1,4 @@
-"""The Ren'Py Switch Loader importer. importer/rsl_import.py is its command line and
+"""The rpynx importer. importer/rsl_import.py is its command line and
 importer/rsl_import_gui.py its window; both use only what this file lists. Standard
 library only, Python 3.9+. It never runs game code and never unpickles game data.
 

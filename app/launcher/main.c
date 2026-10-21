@@ -1,4 +1,4 @@
-/* Ren'Py Switch Loader - the loader .nro (Milestone 7).
+/* rpynx - the loader .nro (Milestone 7).
  *
  * Start-up, the display and the main loop. The screens are app/ui (LVGL),
  * drawn on the CPU into the libnx framebuffer, and only when something
@@ -221,7 +221,7 @@ int main(int argc, char **argv)
 
     g.sd_ok = rsl_mkdirs(ROOT "/logs") && rsl_mkdirs(CTRL_DIR "/games") && rsl_mkdirs(GAMES_DIR);
     rsl_log_open(ROOT "/logs/loader.log");
-    rsl_log("Ren'Py Switch Loader %s, %s, %s", RSL_VERSION, applet_type_str(), mode_str());
+    rsl_log("rpynx %s, %s, %s", RSL_VERSION, applet_type_str(), mode_str());
     /* Same process as the game that may have just quit: report and repair
      * what it left in the heap before another game starts (hardware run 7). */
     rsl_heap_audit("loader start");

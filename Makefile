@@ -1,5 +1,5 @@
 #---------------------------------------------------------------------------------
-# Ren'Py Switch Loader - devkitA64/libnx build. Based on switchbrew/switch-examples
+# rpynx - devkitA64/libnx build. Based on switchbrew/switch-examples
 # templates/application/Makefile. Run through scripts/build.sh for the pinned toolchain.
 #---------------------------------------------------------------------------------
 #---------------------------------------------------------------------------------
@@ -46,7 +46,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 #   PROGRAM=runtime           dist/renpy-runtime.nro  embedded CPython (+ Ren'Py later)
 # `make runtime` needs `make python` (static CPython in build/python/dist) first.
 PROGRAM		?=	loader
-APP_AUTHOR	:=	Ren'Py Switch Loader contributors
+APP_AUTHOR	:=	rpynx contributors
 APP_VERSION	:=	0.1.0
 DATA		:=
 PYDIST		:=	$(CURDIR)/build/python/dist
@@ -57,7 +57,7 @@ TARGET		:=	renpy-runtime
 BUILD		:=	build/runtime
 SOURCES		:=	runtime runtime/python app/diagnostics platform/input platform/filesystem third_party/cjson
 INCLUDES	:=	app/diagnostics platform/input platform/filesystem third_party/cjson build/python/dist/include/python3.12
-APP_TITLE	:=	Ren'Py Switch Runtime
+APP_TITLE	:=	rpynx runtime
 ROMFS		:=	build/runtime-romfs
 # Static archives with circular dependencies, so one group. GLESv2 is reached
 # through SDL_GL_GetProcAddress (Ren'Py's uguu loader) but must be linked.
@@ -74,7 +74,7 @@ BUILD		:=	build/switch
 SOURCES		:=	app/launcher app/ui app/diagnostics platform/input platform/filesystem third_party/cjson
 INCLUDES	:=	app/launcher app/ui app/diagnostics platform/input platform/filesystem third_party/cjson \
 			third_party/lvgl build/lvgl/lvgl
-APP_TITLE	:=	Ren'Py Switch Loader
+APP_TITLE	:=	rpynx
 # Homebrew Menu icon, made by scripts/icons.sh.
 ICON		:=	app/launcher/icon.jpg
 # LVGL (docs/LOADER_UI.md), built as a library by the `lvgl` target below.
