@@ -1,5 +1,5 @@
 # A pause with only the quick menu up: A must continue the pause, not press the
-# quick menu's Back (rsl_bridge._focus_first_button leaves always-up screens alone).
+# quick menu's Back (rsl_focus.focus_first_button leaves always-up screens alone).
 init python:
     def report(what):
         import os

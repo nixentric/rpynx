@@ -87,7 +87,15 @@ A game built with the SDK's distribute tool carries its own copy in `game/`.
   `gles2` renderer.
 - **`rsl_bridge.py`** turns the C mapping engine's logical actions into Ren'Py input on
   Ren'Py's own thread. It wraps `renpy.pygame.event.wait/poll`, which read the controllers
-  every 16 ms while idle:
+  every 16 ms while idle. The rest of the bridge lives in four smaller modules next to it:
+  - `rsl_focus.py`: which button is selected (the first one on a new screen, the game
+    menu's side menu, D-pad moves to overlapping buttons);
+  - `rsl_keyboard.py`: text fields and the Switch keyboard;
+  - `rsl_compat.py`: fixes some games need (7.x gui values across a language change, the
+    notice for links and folder buttons, audio streams left running at exit);
+  - `rsl_diag.py`: save and load lines in `python.txt` for hardware tests.
+
+  The actions map to Ren'Py input as follows:
 
 | Logical action (default button) | Ren'Py input |
 |---|---|

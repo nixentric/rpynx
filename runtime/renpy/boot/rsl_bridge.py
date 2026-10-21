@@ -17,8 +17,11 @@ turns those actions into Ren'Py events, on Ren'Py's own thread:
 
 Ren'Py's own SDL game-controller support is disabled; otherwise every press
 would arrive twice (and with SDL's position-based A/B naming).
+
+The other boot modules hold the rest: rsl_focus (which button is selected),
+rsl_keyboard (text fields), rsl_compat (fixes some games need) and rsl_diag
+(save/load lines for hardware tests).
 """
-import os
 import time
 
 import renpy
@@ -28,6 +31,10 @@ import renpy.pygame.event
 import renpy.pygame.key
 
 import _rslnx
+import rsl_compat
+import rsl_diag
+import rsl_focus
+import rsl_keyboard
 
 # Logical action -> Ren'Py pad control name (see config.pad_bindings).
 PAD = {
@@ -76,68 +83,13 @@ def _overlay():
     renpy.exports.notify("Loader overlay: not implemented yet (Milestone 6).")
 
 
-def _where():
-    """file:line of the game's current statement (below any menu context)."""
-    try:
-        node = renpy.game.script.lookup(renpy.game.contexts[0].current)
-        return "%s:%d" % (node.filename, node.linenumber)
-    except Exception as e:   # a diagnostic must never break a save or load
-        return "unknown (%r)" % e
-
-
-_report_load = False
-
-
-def _after_load():
-    # Ren'Py runs this inside its _after_load label (00start.rpy), so the game's line is
-    # only current at the next interaction: step() reports it there (run 25 logged 00start).
-    global _report_load
-    _report_load = True
-
-
-def _log_saves():
-    """Saves and loads go to python.txt with the script line, so a hardware test can
-    check from the log that a load returns to the line that was saved."""
-    loadsave = renpy.loadsave
-    if not getattr(loadsave.save, "_rsl", False):
-        save, load = loadsave.save, loadsave.load
-
-        def logged_save(slotname, *args, **kwargs):
-            print("rsl: save %s at %s" % (slotname, _where()), flush=True)
-            return save(slotname, *args, **kwargs)
-
-        def logged_load(filename):
-            print("rsl: load %s" % filename, flush=True)
-            return load(filename)
-        logged_save._rsl = True
-        loadsave.save = renpy.exports.save = logged_save   # renpy.save in game code is renpy.exports.save
-        loadsave.load = renpy.exports.load = logged_load
-    if _after_load not in renpy.config.after_load_callbacks:   # 00start.rpy resets the list at init
-        renpy.config.after_load_callbacks.append(_after_load)
-
-
-def _close_dying_streams():
-    """Ren'Py's audio.quit() stops the thread that calls renpysound.periodic() before it
-    fades the channels out, so a stream that ends then stays on the C side's "dying" list
-    and its decode thread waits forever (ffmedia decode_thread in SDL_CondWait). On a PC
-    the process ends anyway; here the next game runs in the same process, and that
-    thread's stack crashed it (hardware runs 22-23). Runs after audio.quit()."""
-    try:
-        renpy.audio.renpysound.periodic()
-        print("rsl: finished audio streams closed at exit", flush=True)
-    except Exception as e:
-        print("rsl: closing finished audio streams failed: %r" % e, flush=True)
-
-
 def _setup_display():
     """Runs from Interface.start(), once the game's config exists."""
     config = renpy.config
-    _log_saves()
+    rsl_diag.install()
     _install_touch_cursor()
-    _install_focus_overlap()
-    _install_open_notice()
-    if _close_dying_streams not in config.python_exit_callbacks:
-        config.python_exit_callbacks.append(_close_dying_streams)
+    rsl_focus.install()
+    rsl_compat.install_display()
     # Ren'Py also matches these names against ordinary key/mouse events, and
     # a name missing from config.keymap is parsed as a key specifier (error).
     for name in NAMED.values():
@@ -177,13 +129,11 @@ def _post_mouse_button(down):
 def step():
     """Read the controllers once and post the resulting Ren'Py events.
     Returns True if there was any controller activity."""
-    global _touch_pointer, _report_load
+    global _touch_pointer
     interface = renpy.display.interface
     if interface is None or not interface.started:
         return False
-    if _report_load:
-        _report_load = False
-        print("rsl: loaded, now at %s" % _where(), flush=True)
+    rsl_diag.report_load()
 
     events, cx, cy, moved = _rslnx.input_poll()
     for kind, action in events:
@@ -198,8 +148,8 @@ def step():
                     f = renpy.display.focus.get_focused()
                     print("rsl: A pressed, focused %s %r, screens %s" % (
                         type(f).__name__ if f is not None else None, getattr(f, "action", None),
-                        _shown_screens()), flush=True)
-                if _text_field_press(action):
+                        rsl_focus.shown_screens()), flush=True)
+                if rsl_keyboard.text_field_press(action):
                     continue
             # B goes back in-game, like the games' own "Back" (Rollback) buttons;
             # in menus it still closes the menu (Ren'Py binds pad B to game_menu).
@@ -221,93 +171,10 @@ def step():
         _touch_pointer = False   # Ren'Py may take the warp's MOUSEMOTION with event.get()
     if moved and renpy.display.draw is not None:
         renpy.display.draw.set_mouse_pos(cx * renpy.config.screen_width, cy * renpy.config.screen_height)
-    _focus_first_button(moved)
-    if _kbd_pending:
-        _open_keyboard()
+    rsl_focus.focus_first_button(moved)
+    if rsl_keyboard.pending:
+        rsl_keyboard.open_keyboard()
     return bool(events) or bool(moved)
-
-
-_auto_focused = None   # the screen set whose first button was already selected
-_last_shown = None     # the screen set of the previous call
-NOT_CONTENT = {"say", "nvl", "notify", "skip_indicator", "quick_menu", "_performance", "_trace_screen"}
-
-
-def _screens():
-    layers = renpy.display.scenelists.scene_lists().layers
-    return [e.displayable for entries in layers.values() for e in entries
-            if isinstance(e.displayable, renpy.display.screen.ScreenDisplayable)]
-
-
-def _shown_screens():
-    # Names, not tags: every game menu screen (save, load, history, ...) has the tag "menu".
-    return tuple(sorted(str(sd.screen_name[0]) for sd in _screens()))
-
-
-def _content_buttons():
-    """ids of the buttons on the screens the player is meant to act on: a choice
-    menu's options, or the screens that are not overlays (config.overlay_screens,
-    such as the quick menu) nor dialogue. None while dialogue is up without a
-    choice: A must advance it."""
-    screens = _screens()
-    names = {sd.screen_name[0] for sd in screens}
-    if "choice" in names:
-        content = [sd for sd in screens if sd.screen_name[0] == "choice"]
-    elif names & {"say", "nvl"}:
-        return None
-    else:
-        skip = NOT_CONTENT | set(renpy.config.overlay_screens)
-        content = [sd for sd in screens if sd.screen_name[0] not in skip and sd.tag not in skip]
-    Button = renpy.display.behavior.Button
-    ids = set()
-    for sd in content:
-        sd.visit_all(lambda d: ids.add(id(d)) if isinstance(d, Button) else None)
-    return ids
-
-
-def _focus_first_button(moved):
-    """When a new set of screens appears and no button is selected, select the
-    first button of the screen the player acts on, so the D-pad and A work at
-    once in every game (runs 14-18): New Game, the first choice, the first card.
-    Never a quick menu or other overlay button: Forbidden Fantasy's always-on
-    debug_screen made its quick menu's Back look like content, and A went back
-    instead of advancing (run 18). Not while a text field is active (the first
-    button may be "Use default name") or the virtual cursor is in use."""
-    global _auto_focused, _last_shown
-    shown = _shown_screens()
-    if shown != _last_shown:   # screens changed: a menu opened again is a new menu
-        _last_shown, _auto_focused = shown, None
-    if moved:
-        _auto_focused = shown
-    focus = renpy.display.focus
-    if shown == _auto_focused or not focus.focus_list:
-        return
-    if isinstance(focus.get_focused(), renpy.display.behavior.Button):
-        _auto_focused = shown
-        return
-    if _active_input() is not None:
-        return
-    ids = _content_buttons()
-    if not ids:
-        return
-    candidates = [f for f in focus.focus_list
-                  if id(f.widget) in ids and f.x is not None and f.widget.style.keyboard_focus]
-    if renpy.store._menu:
-        # In a game menu, start on its side menu ("Save" on the save screen), not on the
-        # first save slot: the slots come first in the standard screens (user request).
-        candidates = [f for f in candidates if _current_menu_entry(f.widget)] + candidates
-    if candidates:
-        _auto_focused = shown
-        focus.pending_focus_type = "keyboard"
-        focus.change_focus(candidates[0])
-
-
-def _current_menu_entry(widget):
-    """True for the game menu's navigation button of the screen shown now: a selected
-    button whose action is ShowMenu, as the standard navigation screen makes them."""
-    action = getattr(widget, "action", None)
-    actions = action if isinstance(action, list) else [action]
-    return (any(isinstance(a, renpy.store.ShowMenu) for a in actions)
-            and renpy.display.behavior.is_selected(action))
 
 
 # The last mouse event came from the touchscreen (SDL marks those touch=True): no
@@ -327,110 +194,6 @@ def _is_mouse_visible(self):
 
 
 _orig_is_mouse_visible = None
-
-
-def _focus_nearest(fx0, fy0, fx1, fy1, tx0, ty0, tx1, ty1, line_dist, condition, *rest):
-    """Ren'Py's D-pad navigation only goes to a button whose box starts past the selected
-    one's edge. Buttons taller than the space between them overlap, so the next one was
-    skipped (Forbidden Fantasy: down from New Game went past Continue, run 24). Also accept
-    a box that overlaps but whose centre is clearly further that way; Ren'Py's distance
-    still picks the nearest."""
-    axis = 0 if fx0 != tx0 else 1
-    sign = 1 if (fx0 > tx0 if axis == 0 else fy0 > ty0) else -1
-
-    def further(old, new):
-        if condition(old, new):
-            return True
-        old_c = old[axis] + old[axis + 2] / 2.0
-        new_c = new[axis] + new[axis + 2] / 2.0
-        return (new_c - old_c) * sign > 0.25 * max(old[axis + 2], new[axis + 2])
-
-    return _orig_focus_nearest(fx0, fy0, fx1, fy1, tx0, ty0, tx1, ty1, line_dist, further, *rest)
-
-
-_orig_focus_nearest = None
-
-
-def _install_focus_overlap():
-    global _orig_focus_nearest
-    focus = renpy.display.focus
-    if focus.focus_nearest is not _focus_nearest:   # focus.py calls it by its global name
-        _orig_focus_nearest = focus.focus_nearest
-        focus.focus_nearest = _focus_nearest
-
-
-# Opening a website or a folder. Ren'Py's open_url() tries webbrowser and stays silent
-# when there is none, so a link did nothing; Forbidden Fantasy's "deluxe" button ran
-# subprocess.Popen(["xdg-open", folder]), and the Switch cannot start processes, so the
-# game stopped with an error (run 24). Both show this notice instead.
-_OPENERS = {"xdg-open", "open", "explorer", "explorer.exe", "start", "cmd", "cmd.exe"}
-
-
-def _cannot_open_screen(target="", what="", **kwargs):
-    ui, store = renpy.ui, renpy.store
-    hide = store.Hide("_rsl_cannot_open")
-    ui.add(store.Solid("#000000b0"))
-    ui.frame(xalign=0.5, yalign=0.5, xmaximum=1000, padding=(40, 30), background=store.Solid("#1d1e22"))
-    ui.vbox(spacing=24)
-    if what == "website":
-        ui.text("This link opens a website, which the Switch cannot show here. "
-                "To visit it, open this address on a phone or computer:",
-                substitute=False, color="#f0f1f4", size=28)
-    else:
-        ui.text("This opens a folder or file on a computer, which the Switch cannot do:",
-                substitute=False, color="#f0f1f4", size=28)
-    ui.text(str(target).replace("{", "{{"), substitute=False, color="#25d0f2", size=26)
-    ui.textbutton("OK", action=hide, xalign=0.5)
-    ui.close()
-    ui.key("game_menu", action=hide)
-    ui.key("rollback", action=hide)
-
-
-def _cannot_open(target):
-    target = str(target)
-    print("rsl: cannot open on the Switch: %s" % target, flush=True)
-    what = "website" if target.lower().startswith(("http:", "https:", "www.")) else "file"
-    try:
-        renpy.exports.show_screen("_rsl_cannot_open", target=target, what=what)
-        renpy.exports.restart_interaction()
-    except Exception as e:   # a notice must never stop the game
-        print("rsl: could not show the notice: %r" % e, flush=True)
-
-
-def _open_url(url, *args, **kwargs):
-    _cannot_open(url)
-
-
-def _install_open_notice():
-    if renpy.display.screen.get_screen_variant("_rsl_cannot_open") is None:   # gone after a reload
-        renpy.exports.define_screen("_rsl_cannot_open", _cannot_open_screen, modal="True", zorder="1000")
-    renpy.exports.open_url = _open_url
-    try:   # never let these stop the bridge from loading
-        import subprocess
-        import webbrowser
-    except Exception as e:
-        print("rsl: no subprocess/webbrowser hooks: %r" % e, flush=True)
-        return
-    webbrowser.open = webbrowser.open_new = webbrowser.open_new_tab = lambda url, *a, **k: _open_url(url) or True
-    if getattr(subprocess.Popen, "_rsl", False):
-        return
-
-    class Popen(subprocess.Popen):
-        """Turns "open this folder/link" commands into the notice and behaves as a process
-        that already finished; anything else runs (and fails) as before."""
-        _rsl = True
-
-        def __init__(self, args, *a, **kw):
-            argv = args.split() if isinstance(args, str) else list(args)
-            if argv and os.path.basename(str(argv[0])).lower() in _OPENERS:
-                _cannot_open(argv[-1] if len(argv) > 1 else argv[0])
-                self.args, self.returncode, self.pid = args, 0, None
-                self.stdin = self.stdout = self.stderr = None
-                self._child_created = self._communication_started = False
-                return
-            super().__init__(args, *a, **kw)
-
-    subprocess.Popen = Popen
 
 
 def _install_touch_cursor():
@@ -468,128 +231,6 @@ def wait():
         _rslnx.wait_event(ACTIVE_MS if now - _last_activity < IDLE_AFTER else IDLE_MS)
 
 
-def _old_language_change():
-    """True for games made with Ren'Py 7.5.3/8.0.3 or older (script_version.txt)."""
-    v = renpy.config.script_version
-    return bool(v) and (v <= (7, 5, 3) or (v[0] == 8 and v <= (8, 0, 3)))
-
-
-def _install_language_compat():
-    """Ren'Py 8.5.3 re-runs every `define gui.*` when the language changes;
-    7.5.3/8.0.3 did that only in gui.rebuild(). A 7.x game that sets gui values
-    in `init python` lost them (Forbidden Fantasy: button text size back to 0,
-    every button label invisible, hardware run 13). For such games, skip that
-    redefine unless gui.rebuild() asks for it (rebuild=True)."""
-    import renpy.ast
-    import renpy.exports
-    import renpy.translation
-
-    redefine, change_language = renpy.ast.redefine, renpy.translation.change_language
-    skip = []
-
-    def compat_redefine(stores):
-        if not (skip and skip[-1] and stores == ["store.gui"]):
-            redefine(stores)
-
-    def compat_change_language(language, force=False, rebuild=False):
-        skip.append(not rebuild and _old_language_change())
-        try:
-            return change_language(language, force=force, rebuild=rebuild)
-        finally:
-            skip.pop()
-
-    renpy.ast.redefine = compat_redefine
-    renpy.translation.change_language = compat_change_language
-    renpy.exports.change_language = compat_change_language
-
-
-# The text field last drawn as editable (Ren'Py keeps no reference to it; an
-# Input without a value, such as renpy.input()'s, is not in behavior.inputs).
-_last_input = None
-_kbd_pending = False      # a text field appeared: open the keyboard for it
-_kbd_closed_at = -1.0     # when the keyboard last closed (time.monotonic)
-
-
-def _active_input():
-    i = _last_input and _last_input()
-    if i is None or not i.editable or renpy.display.interface.text_rect is None:
-        return None
-    return i
-
-
-def _finishes_on_enter(i):
-    return i.action is not None or (i.value is None and not i.changed) or getattr(i.value, "returnable", False)
-
-
-def _open_keyboard():
-    """The full Switch keyboard for the active text field: its own text box shows
-    what is typed, starting from the field's text. OK puts the text into the
-    field, Cancel leaves it; neither moves on, the player does (run 16)."""
-    global _kbd_pending, _kbd_closed_at
-    _kbd_pending = False
-    i = _active_input()
-    if i is None:
-        return
-    text = _rslnx.keyboard(i.content, "", i.length or 0)
-    _kbd_closed_at = time.monotonic()
-    if text is not None:
-        i.caret_pos = len(text)
-        i.update_text(text, True)
-
-
-def _text_field_press(action):
-    """Called on a button press; True if a text field took it.
-    - Right after the keyboard closes, the press that closed it is dropped.
-    - Y, or A with no button selected, opens the keyboard again.
-    - A on a screen with no buttons at all presses Enter, because A cannot
-      submit a Ren'Py input (input_enter is K_RETURN only)."""
-    if action not in ("confirm", "back", "hide_ui") or _active_input() is None:
-        return False
-    if time.monotonic() - _kbd_closed_at < 0.5:
-        return True
-    focus = renpy.display.focus
-    if action == "back" or (action == "confirm" and focus.get_focused() is not None):
-        return False
-    buttons = [f for f in focus.focus_list if f.x is not None and f.widget.style.keyboard_focus]
-    if action == "confirm" and not buttons and _finishes_on_enter(_active_input()):
-        for kind in (pygame.KEYDOWN, pygame.KEYUP):
-            pygame.event.post(pygame.event.Event(kind, key=pygame.K_RETURN, mod=0, scancode=40,
-                                                 unicode="\r", repeat=False))
-    else:
-        _open_keyboard()
-    return True
-
-
-def _install_text_input():
-    """Ren'Py 8.5.3 starts a screen keyboard again on every redraw while SDL
-    reports one as supported but not shown. That suits Android; on the Switch
-    SDL's inline keyboard reappeared as soon as it closed (run 14), and it has
-    no text box (run 16). Ren'Py's start_text_input now only asks for the full
-    keyboard once per field; SDL's inline one is never shown."""
-    import weakref
-
-    key = renpy.pygame.key
-    key.has_screen_keyboard_support = lambda: False
-
-    def start_text_input():
-        global _kbd_pending
-        _kbd_pending = True
-
-    key.start_text_input = start_text_input
-    key.stop_text_input = lambda: None
-
-    Input = renpy.display.behavior.Input
-    render = Input.render
-
-    def input_render(self, *args, **kwargs):
-        global _last_input
-        if self.editable:
-            _last_input = weakref.ref(self)
-        return render(self, *args, **kwargs)
-
-    Input.render = input_render
-
-
 def install():
     renpy.display.controller.init = _setup_display
     renpy.pygame.event.poll = poll
@@ -602,7 +243,7 @@ def install():
 
     def post_import_with_compat():
         post_import()
-        _install_language_compat()
-        _install_text_input()
+        rsl_compat.install_language()
+        rsl_keyboard.install()
 
     renpy.post_import = post_import_with_compat

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Ren'Py compat fixes in rsl_bridge.py, on synthetic games (no game content):
+# Ren'Py compat fixes in the boot modules (rsl_*.py), on synthetic games (no game content):
 #  langcompat  a 7.5.3 game's gui value set in `init python` survives Ren'Py
 #              8.5.3's language change (plain 8.5.3 resets it; hardware run 13)
 #  input       renpy.input() with the full Switch keyboard (emulated by the
