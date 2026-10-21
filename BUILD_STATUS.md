@@ -1,6 +1,6 @@
 # Build status
 
-Last updated: 2026-10-19
+Last updated: 2026-10-21
 
 ## Current milestone
 
@@ -11,6 +11,10 @@ Last updated: 2026-10-19
 | 3 Python runtime | Static CPython 3.12.8 cross-builds; runtime `.nro` links. On a Switch the self-test finishes in 2 s with 66/66 required imports, threads and `os.urandom`; one check fails: non-ASCII file names on `sdmc:` (runs 4, 20). The SD side parses names as Shift-JIS, below libnx: a name is created only if its UTF-8 bytes are also valid Shift-JIS, and listings leave out every non-ASCII entry ([run 20](tests/hardware/results/2026-10-20-run20.md)) |
 | 4 Ren'Py engine | Ren'Py 8.5.3 builds, links and runs on a Switch: The Question (run 5), and Forbidden Fantasy, a Ren'Py 7 game recompiled on the console (run 13). Quit returns to the loader (run 7); three games in a row run in one process (run 12). The controller bridge passes 26/26 desktop checks against the official engine. Music and sound play, also from an `.rpa` ([run 21](tests/hardware/results/2026-10-21-run21.md)). Saves, suspend and touch: **HARDWARE UNVERIFIED**. Applet mode crashed the console (run 8); its fix is not retested |
 | 5 Importer | macOS importer: folder/ZIP/7z/RAR → compatibility report, `manifest.json`, SD export. Host-tested (25 tests). Its export of The Question launched on a Switch (run 9) |
+| 6 Gameplay reliability | In progress. Verified on a Switch: quitting and starting another game no longer crashes (a stuck Ren'Py audio decode thread, runs 22–24); a game error shows the system error dialog and returns to the library (run 25); sleep and resume (runs 23–24); website links and folder buttons show a notice instead of failing (run 25); the D-pad reaches buttons whose boxes overlap (run 25); The Question's preferences with the SDK fonts (run 25). Desktop-tested only: game menus start on their side menu; no cursor after touch. Left: a remap used in a game, save/load to the same line, a custom screen to Done, HOME, applet mode (H34) |
+| 7 Game library | Phase 1 done: LVGL 9.6 mockups (`docs/LOADER_UI.md`, `scripts/mockups.sh`), portrait covers, Row (default) and Grid layouts, performance and logging requirements. Waiting for design approval; built after Milestone 6 |
+| Transfer (planned: after 7, before 8) | Built-in FTP server in the loader (the desktop importer's FTP client exists already), then USB transfer (libnx `usbComms` on the Switch, libusb on the desktop; tens of MB/s against ~1–2 MB/s over Wi-Fi). MTP is not planned: macOS has no MTP support, and an MTP responder such as haze is GPL, which would make the MIT loader GPL |
+| 8 Release validation | Not started |
 
 **Ren'Py 8.5.3 runs on a real Switch** (2026-10-18, run 5): "The Question" starts, renders
 with GLES 3.2 on nouveau, shows dialogue and quits cleanly. Audio plays (run 21). Saves, suspend and touch
@@ -243,9 +247,15 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H35.
 
 ## Next engineering tasks
 
-1. Run H1–H35 on a console. H22 (Python starts) and H26 (Ren'Py starts, GLES on nouveau)
-   decide what comes next. Send back `logs/runtime.log` and `logs/the_question/log.txt`.
-2. Put the run 9 loader (`dist/renpy-loader.nro` `0d985f15…`, the applet-mode launch guard)
-   on the console. The card still runs the run 8 loader `b6997861…`.
-3. Milestone 6, after hardware feedback: save/load and suspend reliability, the in-game
-   overlay, fixes for whatever H26–H35 expose.
+1. Close Milestone 6 on a console, with runtime `5748c070…`:
+   - remap `confirm` to X and `hide_ui` to A, then use them in a game (`input: confirm (X)` in
+     `runtime.log`);
+   - save to slot 1, quit, start the game again, load slot 1 (`rsl: save 1-1 at` and
+     `rsl: loaded, now at` in `python.txt` must name the same line);
+   - JP Name Test's Screen test to Done (`rsl_screen_test:` in `python.txt`);
+   - HOME mid-game;
+   - H34, applet mode.
+2. Milestone 7: approve the mockups, then build the LVGL library (`docs/LOADER_UI.md`,
+   "Next phase").
+3. Transfer: the loader's own FTP server, then USB.
+4. Milestone 8: release validation.
