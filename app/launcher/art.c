@@ -115,6 +115,9 @@ void open_picture(int i)
  * Off the page (also after the emergency combo), the Album is closed. */
 void picture_tick(void)
 {
+    int x;
+    if (ui_frame_drag(&x) && g.screen == SCR_PICTURE && !g.menu_open)   /* a finger on the screenshot */
+        g.crop_x = x < 0 ? 0 : x > SHOT_W - CROP_W ? SHOT_W - CROP_W : x;
     if (g.screen != SCR_PICTURE && g.shot)
         close_picture();
     if (!g.shot || g.sel == loaded || g.now - moved_at < 120)

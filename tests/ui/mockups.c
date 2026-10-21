@@ -366,6 +366,12 @@ int main(int argc, char **argv)
     g.crop_x = 640;
     settle();
     shot(out, "13a-picture");
+    tap(300, 400, -1, -1);   /* a finger on the screenshot: the frame's middle goes under it */
+    int drag;
+    if (!ui_frame_drag(&drag) || drag != 300 - 240) {
+        fprintf(stderr, "drag on the screenshot: frame at %d, expected %d\n", drag, 300 - 240);
+        failures++;
+    }
     g.menu_open = true;
     g.menu_sel = USE_BOTH;
     settle();

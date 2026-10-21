@@ -30,10 +30,33 @@ void paint(lv_draw_buf_t *dst, const void *src, int32_t scale, const lv_area_t *
     lv_canvas_finish_layer(canvas, &layer);
 }
 
+/* Round buf's corners (ARGB8888): what lies outside a RADIUS arc turns
+ * transparent, the arc's edge partly (4x4 samples a pixel). Baked in black
+ * instead, the corners hid the middle of a focused cover's outline arc, which
+ * passes inside the cover's square, and showed as black over the Cinematic art. */
+static void round_corners(lv_draw_buf_t *buf)
+{
+    int32_t w = buf->header.w, h = buf->header.h, r8 = RADIUS * 8;
+    for (int32_t y = 0; y < RADIUS; y++)
+        for (int32_t x = 0; x < RADIUS; x++) {
+            int in = 0;   /* samples inside, in 1/8 px from the arc's centre */
+            for (int s = 0; s < 16; s++) {
+                int32_t dx = r8 - (x * 8 + s % 4 * 2 + 1), dy = r8 - (y * 8 + s / 4 * 2 + 1);
+                in += dx * dx + dy * dy <= r8 * r8;
+            }
+            if (in == 16)
+                continue;
+            uint8_t opa = (uint8_t)(in * 255 / 16);
+            const int32_t px[4][2] = { { x, y }, { w - 1 - x, y }, { x, h - 1 - y }, { w - 1 - x, h - 1 - y } };
+            for (int k = 0; k < 4; k++)
+                ((lv_color32_t *)(buf->data + px[k][1] * buf->header.stride))[px[k][0]].alpha = opa;
+        }
+}
+
 /* Decode the JPEG at path once, scaled to fill buf (cropped to its aspect),
- * with the corners rounded on the background colour, so that drawing it
- * later is a plain copy. LVGL's JPEG decoder keeps nothing: drawing the
- * file itself would decode it again on every frame of a scroll. */
+ * the corners rounded when asked, so that drawing it later is a copy.
+ * LVGL's JPEG decoder keeps nothing: drawing the file itself would decode it
+ * again on every frame of a scroll. */
 static bool render_cover(lv_draw_buf_t *buf, const char *path, bool round)
 {
     char src[sizeof g.info[0].cover + 2];
@@ -65,26 +88,14 @@ static bool render_cover(lv_draw_buf_t *buf, const char *path, bool round)
     lv_canvas_fill_bg(canvas, lv_color_hex(BG), LV_OPA_COVER);
     paint(buf, full, scale, &a);
     lv_draw_buf_destroy(full);
-    if (!round)
-        return true;
-
-    /* Round the corners: a border whose inner edge is the cover's outline. */
-    lv_layer_t layer;
-    lv_draw_rect_dsc_t frame;
-    lv_area_t f = { -RADIUS, -RADIUS, w - 1 + RADIUS, h - 1 + RADIUS };
-    lv_canvas_init_layer(canvas, &layer);
-    lv_draw_rect_dsc_init(&frame);
-    frame.bg_opa = LV_OPA_TRANSP;
-    frame.border_color = lv_color_hex(BG);
-    frame.border_width = RADIUS;
-    frame.radius = 2 * RADIUS;
-    lv_draw_rect(&layer, &frame, &f);
-    lv_canvas_finish_layer(canvas, &layer);
+    if (round)
+        round_corners(buf);
     return true;
 }
 
 static void show_cover(lv_obj_t *c, lv_draw_buf_t *buf)
 {
+    lv_obj_set_style_bg_opa(c, LV_OPA_TRANSP, 0);   /* its edge would show as a thin ring at the corners */
     lv_obj_delete(lv_obj_get_child(c, 0));   /* the placeholder letter */
     lv_obj_t *im = lv_image_create(c);
     lv_image_set_src(im, buf);
@@ -151,7 +162,7 @@ void load_next_thumb(void)
         thumb_tried[i] = true;
         if (!g.info[i].cover[0])
             continue;
-        lv_draw_buf_t *b = lv_draw_buf_create(COVER_W, COVER_H, LV_COLOR_FORMAT_XRGB8888, 0);
+        lv_draw_buf_t *b = lv_draw_buf_create(COVER_W, COVER_H, LV_COLOR_FORMAT_ARGB8888, 0);   /* round corners */
         if (b && !render_cover(b, g.info[i].cover, true)) {
             lv_draw_buf_destroy(b);
             b = NULL;

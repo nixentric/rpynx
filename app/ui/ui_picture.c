@@ -4,6 +4,11 @@
 
 static lv_draw_buf_t shot, part;         /* picture page: over g.shot, and what is cut from it */
 
+/* A finger on the screenshot, until ui_frame_drag() takes it: where the
+ * frame's left edge goes so that its middle is under the finger. */
+static bool dragged;
+static int drag_x;
+
 static const char *const use_text[USE_COUNT][2] = {
     { "Use as cover", "The framed part, in the library and on the details" },
     { "Use as background", "The whole screenshot, behind the details" },
@@ -22,6 +27,15 @@ static void place_frame(void)
     lv_obj_set_width(u.shade[1], W - g.crop_x - w);
 }
 
+static void finger(lv_event_t *e)
+{
+    lv_point_t p;
+    (void)e;
+    lv_indev_get_point(lv_indev_active(), &p);
+    drag_x = p.x - g.shot_h * 2 / 3 / 2;
+    dragged = true;
+}
+
 /* An Album screenshot at its own size (the screen's), the part outside the
  * cover's frame shaded, dark bands behind the header and the footer; the
  * choice of what it becomes slides in like the + menu. */
@@ -31,6 +45,9 @@ void build_picture(lv_obj_t *s)
                      (uint32_t)(g.shot_w * g.shot_h * 4));
     u.backdrop = lv_image_create(s);
     lv_image_set_src(u.backdrop, &shot);
+    lv_obj_set_clickable(u.backdrop, true);   /* a finger on it moves the frame */
+    lv_obj_set_click_focusable(u.backdrop, false);
+    lv_obj_add_event_cb(u.backdrop, finger, LV_EVENT_PRESSING, NULL);
     u.shade[0] = shape(s, 0, 0, 0, H, BG, LV_OPA_60, 0);
     u.shade[1] = shape(s, 0, 0, 0, H, BG, LV_OPA_60, 0);
     u.frame = box(s);
@@ -64,6 +81,14 @@ void update_picture(void)
     if (u.crop_drawn != g.crop_x)
         place_frame();
     set_textf(u.shot_text, "%d of %d%s%s", g.sel + 1, g.shot_count, g.shot_date[0] ? "   " : "", g.shot_date);
+}
+
+bool ui_frame_drag(int *x)
+{
+    bool d = dragged;
+    *x = drag_x;
+    dragged = false;
+    return d;
 }
 
 void ui_shot_part(int x, int y, int w, int h, uint32_t *out, int ow, int oh)

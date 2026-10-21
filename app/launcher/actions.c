@@ -114,14 +114,6 @@ static void library_action(rsl_action a)
     }
 }
 
-/* Back from a page the + menu opened: the menu again, on that entry. */
-static void back_to_menu(int entry)
-{
-    go_library();
-    g.menu_open = true;
-    g.menu_sel = entry;
-}
-
 /* The Layout page: left/right within a line (on the hue row: the hue, live),
  * up/down between the lines, confirm uses. Layout, background and presets
  * are saved at once; the custom hue on confirm or when the page is left. */
@@ -177,7 +169,7 @@ static void layout_action(rsl_action a)
         if (m.accent_dirty)
             save_settings();
         m.accent_dirty = false;
-        back_to_menu(MENU_LAYOUT);
+        go_library();   /* like every page the + menu opens */
         break;
     default:
         break;

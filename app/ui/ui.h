@@ -26,6 +26,10 @@ void ui_scroll(int dir);
  * XRGB8888 of the same aspect. What becomes a cover or a backdrop. */
 void ui_shot_part(int x, int y, int w, int h, uint32_t *out, int ow, int oh);
 
+/* Picture page: a finger on the screenshot since the last call; *x is where
+ * the cover frame's left edge goes, its middle under the finger (unclamped). */
+bool ui_frame_drag(int *x);
+
 /* Game i's cover or backdrop file changed: decode it again. */
 void ui_art_changed(int i);
 
