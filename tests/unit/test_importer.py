@@ -3,6 +3,7 @@
 usage: /usr/bin/python3 -m unittest tests/unit/test_importer.py
 """
 import contextlib
+import ftplib
 import io
 import json
 import ntpath
@@ -15,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import types
+import unicodedata
 import unittest
 import zipfile
 import zlib
@@ -248,15 +250,22 @@ class ImporterTest(unittest.TestCase):
         write(os.path.join(orphan, "game", "secret.rpyc"), rpyc(2))
         code, _, err = self.run_cli(orphan, "--recompile")
         self.assertEqual(code, 1)
-        self.assertIn("1 compiled scripts have no .rpy source (secret.rpyc)", err)
-        self.assertIn("pip install rpycdec", err)
+        self.assertIn("1 compiled scripts have no .rpy source (secret.rpyc); add --decompile", err)
+        m, _, _ = self.analyze_dir(orphan)
+        self.assertEqual(list(m["suggested_options"]), ["decompile"], "the page shows it as an alert")
+        self.assertIn("1 compiled scripts were never decompiled", m["suggested_options"]["decompile"])
+        with mock.patch.object(imp, "UNRPYC", self.path("none", "unrpyc.py")):
+            code, _, err = self.run_cli(orphan, "--decompile")   # --recompile is implied
+        self.assertIn("unrpyc not found; fetch it with third_party/unrpyc/fetch.sh", err)
         with mock.patch.dict(os.environ, {"PATH": self.path("empty")}):
-            code, _, err = self.run_cli(orphan, "--recompile", "--decompile")
+            code, _, err = self.run_cli(orphan, "--decompile", "--decompiler", "rpycdec")
         self.assertIn("rpycdec not found on PATH", err)
-        code, _, err = self.run_cli(orphan, "--recompile", "--decompile", "--rpycdec-python", self.path("nopython"))
+        code, _, err = self.run_cli(orphan, "--decompile", "--decompiler", "rpycdec",
+                                    "--rpycdec-python", self.path("nopython"))
         self.assertIn("--decompile: cannot run", err)
-        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
-            imp.main([orphan, "--decompile"])
+        for args in (["--decompiler", "rpycdec"], ["--decompile", "--rpycdec-python", "python3"]):
+            with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                imp.main([orphan] + args)
         os.remove(os.path.join(orphan, "game", "secret.rpyc"))
         write(os.path.join(orphan, "game", "scripts.rpa"), b"RPA-3.0 ")
         code, _, err = self.run_cli(orphan, "--recompile")
@@ -265,26 +274,55 @@ class ImporterTest(unittest.TestCase):
         self.assertIn("try --recompile", m["reasons"][0])
         self.assertEqual(m["suggested_options"], {}, "--recompile refuses games with .rpa archives")
 
-    @unittest.skipUnless(shutil.which("rpycdec"), "rpycdec not installed")
+    def decompilers(self):
+        """The --decompiler tools found here; the tests with them run once per tool."""
+        found = [t for t, ok in (("unrpyc", imp.find_unrpyc()), ("rpycdec", imp.find_tool(("rpycdec",)))) if ok]
+        if not found:
+            self.skipTest("no decompiler: run third_party/unrpyc/fetch.sh or pip install rpycdec")
+        return found
+
     def test_decompile_sourceless_py2_game(self):
-        src = make_game(self.path("OldGame"), py=2)
-        os.remove(os.path.join(src, "game", "script.rpy"))
-        write(os.path.join(src, "game", "script.rpyc"), py2_script("start", "Hello from a decompiled script."))
-        write(os.path.join(src, "game", "chapters", "one.rpyc"), py2_script("one", "Chapter one."))
-        before = listing(src)
-        out = self.path("sd")
-        code, stdout, err = self.run_cli(src, "--out", out, "--recompile", "--decompile")
-        self.assertEqual(code, 0, err)
-        self.assertEqual(listing(src), before, "source must not change")
-        game = os.path.join(out, "switch", "renpy-loader", "games", "fake-quest", "game")
-        self.assertEqual(listing(game), ["chapters", "chapters/one.rpy", "music.ogg", "options.rpy", "script.rpy"])
-        with open(os.path.join(game, "script.rpy"), encoding="utf-8") as f:
-            self.assertEqual(f.read().split(), ["label", "start:", '"Hello', "from", "a", "decompiled", 'script."'])
-        with open(os.path.join(game, "..", "manifest.json"), encoding="utf-8") as f:
-            m = json.load(f)
-        self.assertEqual((m["status"], m["decompiled"]), ("experimental", ["chapters/one.rpy", "script.rpy"]))
-        self.assertEqual((m["files"]["rpy"], m["files"]["rpyc"]), (3, 0))
-        self.assertIn("may differ from the originals", "\n".join(m["warnings"]))
+        for tool in self.decompilers():
+            with self.subTest(tool):
+                src = make_game(self.path(tool, "OldGame"), py=2)
+                os.remove(os.path.join(src, "game", "script.rpy"))
+                write(os.path.join(src, "game", "script.rpyc"), py2_script("start", "Hello from a decompiled script."))
+                write(os.path.join(src, "game", "chapters", "one.rpyc"), py2_script("one", "Chapter one."))
+                before = listing(src)
+                out = self.path(tool, "sd")
+                code, stdout, err = self.run_cli(src, "--out", out, "--decompile", "--decompiler", tool)
+                self.assertEqual(code, 0, err)
+                self.assertEqual(listing(src), before, "source must not change")
+                game = os.path.join(out, "switch", "renpy-loader", "games", "fake-quest", "game")
+                self.assertEqual(listing(game), ["chapters", "chapters/one.rpy", "music.ogg", "options.rpy", "script.rpy"])
+                with open(os.path.join(game, "script.rpy"), encoding="utf-8") as f:
+                    words = [w for w in f.read().split() if not w.startswith(("#", "unrpyc:", "https:"))]
+                self.assertEqual(words[:7], ["label", "start:", '"Hello', "from", "a", "decompiled", 'script."'])
+                with open(os.path.join(game, "..", "manifest.json"), encoding="utf-8") as f:
+                    m = json.load(f)
+                self.assertEqual((m["status"], m["recompile"], m["decompiled"]),
+                                 ("experimental", True, ["chapters/one.rpy", "script.rpy"]))
+                self.assertEqual((m["files"]["rpy"], m["files"]["rpyc"]), (3, 0))
+                self.assertIn("with %s (chapters/one.rpy, script.rpy). Decompiled scripts may differ" % tool,
+                              "\n".join(m["warnings"]))
+
+    def test_decompile_failures_are_named(self):
+        for tool in self.decompilers():
+            with self.subTest(tool):
+                src = make_game(self.path(tool, "OldGame"), py=2)
+                write(os.path.join(src, "game", "tl", "french", "broken.rpyc"), b"RENPY RPC2 not a script")
+                code, stdout, err = self.run_cli(src, "--decompile", "--decompiler", tool)
+                if tool == "unrpyc":   # goes on, and a translation it cannot read is left out
+                    self.assertEqual(code, 0, err)
+                    self.assertIn("unrpyc could not decompile 1 translation files (tl/french/broken.rpyc) "
+                                  "(first error: struct.error", stdout)
+                else:   # stops at the first script it cannot read
+                    self.assertEqual(code, 1)
+                    self.assertIn("rpycdec failed: ERROR:rpycdec.decompile:decode file tl/french/broken.rpyc", err)
+                write(os.path.join(src, "game", "chapter.rpyc"), b"RENPY RPC2 not a script")
+                code, _, err = self.run_cli(src, "--decompile", "--decompiler", tool)
+                self.assertEqual(code, 1)
+                self.assertIn("chapter.rpyc", err)
 
     def test_py2_rpyc_without_engine_is_unsupported(self):
         write(self.path("g", "game", "script.rpyc"), rpyc(2))
@@ -303,6 +341,31 @@ class ImporterTest(unittest.TestCase):
         self.assertIn("python-packages present", text)
         self.assertIn("1 files with non-ASCII names", text)
         self.assertIn("Ren'Py cannot play MIDI: theme.mid", text)
+
+    def test_non_ascii_names_are_packed_into_an_archive(self):
+        # Hardware run 20: the Switch SD refuses or hides such names; Ren'Py reads them from an .rpa.
+        src = make_game(self.path("FakeQuest"))
+        write(os.path.join(src, "game", "images", "セーブ.png"), b"\x89PNG jp")
+        write(os.path.join(src, "game", "audio", unicodedata.normalize("NFD", "ブ.ogg")), b"OggS jp")
+        write(os.path.join(src, "game", "日本.rpy"), "label jp:\n")   # Ren'Py loads no .rpy from an archive
+        out = self.path("sd")
+        m, gamedir, files, extra = imp.analyze(src, "directory", src)
+        text = "\n".join(m["warnings"])
+        self.assertIn("2 files with non-ASCII names", text)
+        self.assertIn("scripts or archives with non-ASCII names (日本.rpy)", text)
+        imp.export(m, gamedir, files, out, False, extra)
+        game = os.path.join(out, "switch", "renpy-loader", "games", "fake-quest", "game")
+        self.assertEqual(listing(game), ["music.ogg", "options.rpy", "rsl-nonascii.rpa", "script.rpy",
+                                         "script.rpyc", "日本.rpy"])
+        index = imp.rpa_index(os.path.join(game, "rsl-nonascii.rpa"))
+        self.assertEqual(sorted(index), ["audio/ブ.ogg", "images/セーブ.png"], "names in NFC")
+        self.assertEqual(imp.read_member(game, ("rsl-nonascii.rpa",) + index["audio/ブ.ogg"]), b"OggS jp")
+
+        with mock.patch.object(imp, "PACKED_MAX", 40):   # each member alone fills an archive
+            imp.export(m, gamedir, files, out, True, extra)
+        archives = [n for n in listing(game) if n.endswith(".rpa")]
+        self.assertEqual(archives, ["rsl-nonascii-2.rpa", "rsl-nonascii.rpa"])
+        self.assertEqual(sum(len(imp.rpa_index(os.path.join(game, a))) for a in archives), 2)
 
     def test_id_normalisation(self):
         vectors = [
@@ -576,6 +639,252 @@ class ImporterTest(unittest.TestCase):
         os.chmod(os.path.join(d, "game", "locked.rpy"), stat.S_IREAD)   # read-only attribute on Windows
         imp.rmtree(d)
         self.assertFalse(os.path.exists(d))
+
+
+
+class FakeFTP:
+    """ftplib.FTP, as sphaira's server answers it, over a local folder: / is the SD card.
+    fail_store=n drops the connection on the n-th upload."""
+
+    def __init__(self, root, fail_store=None, refuse=False):
+        self.root, self.fail_store, self.refuse, self.stores = root, fail_store, refuse, 0
+
+    def connect(self, host, port, timeout):
+        if self.refuse:
+            raise OSError("timed out")
+        self.address = (host, port)
+
+    def login(self):
+        pass
+
+    def close(self):
+        pass
+
+    def local(self, p):
+        return os.path.join(self.root, *p.strip("/").split("/"))
+
+    def do(self, func, *args):
+        try:
+            return func(*args)
+        except OSError as e:
+            raise ftplib.error_perm("550 %s" % e.strerror)
+
+    def mlsd(self, path):
+        d = self.local(path)
+        if not os.path.isdir(d):
+            raise ftplib.error_perm("501 No such directory.")   # pyftpdlib's answer; not 550
+        names = os.listdir(d)
+        yield ".", {"type": "cdir"}
+        for n in names:
+            yield n, {"type": "dir" if os.path.isdir(os.path.join(d, n)) else "file", "size": "0"}
+
+    def retrbinary(self, cmd, callback):
+        with self.do(open, self.local(cmd[5:]), "rb") as f:
+            callback(f.read())
+
+    def storbinary(self, cmd, fp, blocksize=8192, callback=None):
+        self.stores += 1
+        if self.stores == self.fail_store:
+            raise EOFError()
+        with self.do(open, self.local(cmd[5:]), "wb") as f:
+            for block in iter(lambda: fp.read(blocksize), b""):
+                f.write(block)
+                if callback:
+                    callback(block)
+
+    def cwd(self, p):
+        if not os.path.isdir(self.local(p)):
+            raise ftplib.error_perm("550 No such directory.")
+
+    def mkd(self, p):
+        self.do(os.mkdir, self.local(p))
+
+    def rename(self, a, b):
+        if os.path.lexists(self.local(b)):
+            raise ftplib.error_perm("550 target exists")
+        self.do(os.rename, self.local(a), self.local(b))
+
+    def delete(self, p):
+        self.do(os.remove, self.local(p))
+
+    def rmd(self, p):
+        self.do(os.rmdir, self.local(p))
+
+
+class SwitchFtpTest(unittest.TestCase):
+    """--out ftp://HOST:PORT, against FakeFTP: no Switch needed."""
+    URL = "ftp://192.168.1.20:5000"
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="rsl-ftp-test-")
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.sd = os.path.join(self.tmp, "sd")   # the Switch's SD card, as the fake server sees it
+        self.root = os.path.join(self.sd, "switch", "renpy-loader")
+        self.games = os.path.join(self.root, "games")
+        os.makedirs(os.path.join(self.sd, "switch"))   # a card the loader was never installed on
+        self.src = make_game(os.path.join(self.tmp, "FakeQuest"))
+        self.switch()
+
+    def switch(self, **kw):
+        self.connections = []
+
+        def connect():
+            self.connections.append(FakeFTP(self.sd, **kw))
+            return self.connections[-1]
+        patcher = mock.patch.object(imp.ftplib, "FTP", connect)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def export(self, replace=False, progress=None):
+        m, gamedir, files, extra = imp.analyze(self.src, "directory", self.src)
+        return imp.export(m, gamedir, files, self.URL, replace, extra, progress)
+
+    def test_export_library_replace_delete(self):
+        calls = []
+        dest = self.export(progress=lambda *a: calls.append(a))
+        self.assertEqual(dest, self.URL + "/switch/renpy-loader/games/fake-quest")
+        self.assertEqual(self.connections[0].address, ("192.168.1.20", 5000))
+        self.assertEqual(listing(os.path.join(self.games, "fake-quest")),
+                         ["game", "game/music.ogg", "game/options.rpy", "game/script.rpy", "game/script.rpyc",
+                          "manifest.json"])
+        self.assertEqual(calls[-1], (4, 4, "", ""))
+        self.assertIn((1.0, 4, calls[0][2], ""), calls, "progress within a file: done + fraction sent")
+        with self.assertRaises(imp.Refused) as cm:
+            self.export()
+        self.assertIn("already exists", str(cm.exception))
+
+        games = imp.exported_games(self.URL)
+        self.assertEqual(games, imp.exported_games(self.sd), "the same library over FTP and from the card")
+        self.assertEqual([(i, m["title"]) for i, m in games], [("fake-quest", "Fake Quest")])
+
+        player = os.path.join(self.root, "saves", "fake-quest", "1-1-LT1.save")
+        runtime = os.path.join(self.games, "fake-quest", "game", "saves", "auto-1.save")
+        write(player, b"player save")
+        write(runtime, b"runtime save")
+        write(os.path.join(self.src, "game", "new.rpy"), "label new:\n")
+        self.export(replace=True)
+        self.assertTrue(os.path.isfile(os.path.join(self.games, "fake-quest", "game", "new.rpy")))
+        with open(runtime, "rb") as f:
+            self.assertEqual(f.read(), b"runtime save", "game/saves moves into the new game/")
+        self.assertEqual(os.listdir(self.games), ["fake-quest"], "no .uploading- or .old- folder left")
+
+        imp.delete_game(self.URL, "fake-quest")
+        self.assertEqual(os.listdir(self.games), [])
+        with open(player, "rb") as f:
+            self.assertEqual(f.read(), b"player save", "saves/<id> is kept")
+        self.export()
+        imp.delete_game(self.URL, "fake-quest", saves=True)
+        self.assertEqual(os.listdir(os.path.join(self.root, "saves")), [])
+
+    def test_cancel_and_lost_connection_leave_the_switch_as_it_was(self):
+        self.export()
+        write(os.path.join(self.src, "game", "new.rpy"), "label new:\n")
+
+        def cancel(done, total, rel, note):
+            if done > 2:
+                raise KeyboardInterrupt
+        with self.assertRaises(KeyboardInterrupt):
+            self.export(True, cancel)
+        self.assertEqual(os.listdir(self.games), ["fake-quest"], "the upload folder is removed")
+        self.assertNotIn("new.rpy", os.listdir(os.path.join(self.games, "fake-quest", "game")))
+
+        self.switch(fail_store=3)
+        with self.assertRaises(EOFError):
+            self.export(True)
+        self.assertEqual(len(self.connections), 2, "cleaned up over a new connection")
+        self.assertEqual(os.listdir(self.games), ["fake-quest"])
+
+    def test_leftovers_and_refusals(self):
+        write(os.path.join(self.games, ".uploading-fake-quest", "game", "half.rpy"))
+        self.export()
+        self.assertEqual(os.listdir(self.games), ["fake-quest"], "a cancelled upload's folder is replaced")
+
+        os.makedirs(os.path.join(self.games, ".old-fake-quest", "game", "saves"))
+        with self.assertRaises(imp.Refused) as cm:
+            self.export(True)
+        self.assertIn("may hold saves", str(cm.exception))
+
+        for game_id in (".old-fake-quest", "../saves", "missing"):
+            with self.assertRaises(imp.Refused):
+                imp.delete_game(self.URL, game_id)
+            with self.assertRaises(imp.Refused):
+                imp.delete_game(self.sd, game_id)
+        self.assertTrue(os.path.isdir(os.path.join(self.games, ".old-fake-quest")))
+
+        with self.assertRaises(imp.Refused) as cm:
+            imp.exported_games("ftp://192.168.1.20:port")
+        self.assertIn("use HOST:PORT", str(cm.exception))
+        self.switch(refuse=True)
+        code, err = 0, io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            code = imp.main([self.src, "--out", "ftp://192.168.1.20"])
+        self.assertEqual(code, 1)
+        self.assertIn("cannot reach the Switch at 192.168.1.20:5000", err.getvalue())
+
+    def test_compare_collection_with_library(self):
+        col = os.path.join(self.tmp, "collection")
+
+        def game(name, title, py=3):
+            base = make_game(os.path.join(col, name), py)
+            write(os.path.join(base, "game", "options.rpy"), 'define config.name = _("%s")\n' % title)
+            return base
+
+        def export(source, **kw):
+            m, gamedir, files, extra = imp.load(source, tempfile.mkdtemp(dir=self.tmp), **kw)
+            imp.export(m, gamedir, files, self.sd, False, extra)
+
+        export(game("Same", "Same Game"))
+        export(game("Changed", "Changed Game"))
+        rpyc = os.path.join(col, "Changed", "game", "script.rpyc")
+        with open(rpyc, "rb") as f:
+            data = f.read()
+        write(rpyc, data[:-1] + bytes([data[-1] ^ 1]))   # same size, other bytes
+        export(game("Grown", "Grown Game"))
+        write(os.path.join(col, "Grown", "game", "extra.png"), b"x")
+        export(game("Old", "Old Game"))
+        os.rename(os.path.join(col, "Old"), os.path.join(col, "Old v2"))   # matched by id, not name
+        export(game("Py2", "Py2 Game", py=2), recompile=True)
+        export(game("Custom", "Custom Game"), game_id="my-pick")   # --id: matched by the source name
+        zipped = game("Zipped", "Zipped Game")
+        with zipfile.ZipFile(os.path.join(col, "Zipped.zip"), "w") as zf:
+            for d, _, fs in os.walk(zipped):
+                for n in fs:
+                    zf.write(os.path.join(d, n), os.path.relpath(os.path.join(d, n), col))
+        shutil.rmtree(zipped)
+        export(os.path.join(col, "Zipped.zip"))
+        game("New", "New Game")
+        game("By Hand", "By Hand")
+        write(os.path.join(self.games, "by-hand", "game", "script.rpy"), "label start:\n")
+        write(os.path.join(self.games, "gone", "manifest.json"), '{"title": "Gone Game"}')
+        write(os.path.join(col, "Notes", "todo.txt"), "not a game")
+        write(os.path.join(col, "readme.txt"), "ignored: not a folder or an archive")
+
+        rows = imp.compare(col, self.sd)
+        got = {r["title"]: (r["state"], r["id"]) for r in rows}
+        self.assertEqual(got, {
+            "Same Game": ("same", "same-game"), "Changed Game": ("different", "changed-game"),
+            "Grown Game": ("different", "grown-game"), "Old Game": ("same", "old-game"),
+            "Py2 Game": ("same", "py2-game"), "Zipped Game": ("same", "zipped-game"),
+            "Custom Game": ("same", "my-pick"),
+            "New Game": ("missing", "new-game"), "By Hand": ("unknown", "by-hand"),
+            "Gone Game": ("only", "gone"), "Notes": ("unreadable", None)})
+        why = {r["title"]: r["why"] for r in rows}
+        self.assertEqual(why["Changed Game"], ["1 scripts or archives differ: script.rpyc"])
+        self.assertEqual(why["Grown Game"], ["5 files in the folder, 4 in the library", "1 byte more in the folder"])
+        self.assertEqual(why["Old Game"], ["the library copy came from Old"])
+        self.assertEqual([r["state"] for r in rows][:2], ["different", "different"], "differences first")
+        self.assertEqual(imp.compare(col, self.URL), rows, "the same over FTP")
+
+    def test_local_delete_keeps_saves(self):
+        m, gamedir, files, extra = imp.analyze(self.src, "directory", self.src)
+        imp.export(m, gamedir, files, self.sd, False, extra)
+        write(os.path.join(self.root, "saves", "fake-quest", "1-1-LT1.save"), b"player save")
+        imp.delete_game(self.sd, "fake-quest")
+        self.assertEqual(os.listdir(self.games), [])
+        self.assertEqual(os.listdir(os.path.join(self.root, "saves")), ["fake-quest"])
+        imp.export(m, gamedir, files, self.sd, False, extra)
+        imp.delete_game(self.sd, "fake-quest", saves=True)
+        self.assertEqual(os.listdir(os.path.join(self.root, "saves")), [])
 
 
 if __name__ == "__main__":

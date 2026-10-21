@@ -5,7 +5,7 @@ games from the SD card, with a first-class remappable controller system.
 
 **Status: Ren'Py 8.5.3 runs on a real Switch.** "The Question" starts, renders with GLES 3.2
 and quits cleanly (hardware run 5), and games exported by the macOS importer launch from the
-loader's library (run 9). Audio, saves, suspend and touch are still unverified on hardware.
+loader's library (run 9). Audio plays (run 21). Saves, suspend and touch are still unverified on hardware.
 See [BUILD_STATUS.md](BUILD_STATUS.md) for what is built, tested and hardware-verified.
 
 ## Build (macOS Apple Silicon or Linux)

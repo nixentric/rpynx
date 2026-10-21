@@ -8,12 +8,12 @@ Last updated: 2026-10-19
 |---|---|
 | 1 Toolchain | Code complete, builds. On a Switch: the loader and runtime `.nro` start and chain-load each other both ways (run 1) |
 | 2 Input system | Code complete, host-tested. On a Switch: handheld controls drive the loader's menus (run 1); in games the D-pad, A and the virtual cursor pick buttons (runs 16, 18). Remapping, profiles, the emergency combo, touch, docked play and controller reconnect: **HARDWARE UNVERIFIED** |
-| 3 Python runtime | Static CPython 3.12.8 cross-builds; runtime `.nro` links. On a Switch the self-test finishes in 2 s with 66/66 required imports, threads and `os.urandom`; one check fails: creating a non-ASCII file name on `sdmc:` (run 4) |
-| 4 Ren'Py engine | Ren'Py 8.5.3 builds, links and runs on a Switch: The Question (run 5), and Forbidden Fantasy, a Ren'Py 7 game recompiled on the console (run 13). Quit returns to the loader (run 7); three games in a row run in one process (run 12). The controller bridge passes 26/26 desktop checks against the official engine. Audio, saves, suspend and touch: **HARDWARE UNVERIFIED**. Applet mode crashed the console (run 8); its fix is not retested |
+| 3 Python runtime | Static CPython 3.12.8 cross-builds; runtime `.nro` links. On a Switch the self-test finishes in 2 s with 66/66 required imports, threads and `os.urandom`; one check fails: non-ASCII file names on `sdmc:` (runs 4, 20). The SD side parses names as Shift-JIS, below libnx: a name is created only if its UTF-8 bytes are also valid Shift-JIS, and listings leave out every non-ASCII entry ([run 20](tests/hardware/results/2026-10-20-run20.md)) |
+| 4 Ren'Py engine | Ren'Py 8.5.3 builds, links and runs on a Switch: The Question (run 5), and Forbidden Fantasy, a Ren'Py 7 game recompiled on the console (run 13). Quit returns to the loader (run 7); three games in a row run in one process (run 12). The controller bridge passes 26/26 desktop checks against the official engine. Music and sound play, also from an `.rpa` ([run 21](tests/hardware/results/2026-10-21-run21.md)). Saves, suspend and touch: **HARDWARE UNVERIFIED**. Applet mode crashed the console (run 8); its fix is not retested |
 | 5 Importer | macOS importer: folder/ZIP/7z/RAR → compatibility report, `manifest.json`, SD export. Host-tested (25 tests). Its export of The Question launched on a Switch (run 9) |
 
 **Ren'Py 8.5.3 runs on a real Switch** (2026-10-18, run 5): "The Question" starts, renders
-with GLES 3.2 on nouveau, shows dialogue and quits cleanly. Audio, saves, suspend and touch
+with GLES 3.2 on nouveau, shows dialogue and quits cleanly. Audio plays (run 21). Saves, suspend and touch
 are still unverified on hardware. See
 [tests/hardware/results](tests/hardware/results/).
 
@@ -200,8 +200,7 @@ itself. It does not prove anything about Horizon.
 **HARDWARE UNVERIFIED** (no result in any run):
 - controls and console: remapping, profiles and the emergency combo (H9–H14, H35), touch (H7, H29),
   sleep/resume (H16, H25, H32), controller reconnect (H17), docked mode (H18);
-- Python: non-ASCII file names on `sdmc:` fail (run 4) and are not investigated yet;
-- Ren'Py: audio (H30), save/reload (H31), smooth video playback (run 13), applet mode after
+- Ren'Py: save/reload (H31), smooth video playback (run 13), applet mode after
   the run 8 crash (H34), the full Switch keyboard (run 17 build).
 
 Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H35.
@@ -211,6 +210,10 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H35.
 - Loader UI is a text console. The graphical library is Milestone 7.
 - The in-game loader overlay is not built; L-stick press only shows a notice.
 - Live2D and 3D models are unsupported.
+- Non-ASCII file names on the SD card (run 20): about half of Japanese names cannot be created,
+  and none show in directory listings. The importer packs such files into `game/rsl-nonascii.rpa`;
+  images and sound load from it on a Switch ([run 21](tests/hardware/results/2026-10-21-run21.md)). Scripts and archives with such names stay loose and are
+  still affected.
 - devkitPro's switch-ffmpeg is built with `--enable-gpl` and linked statically, so a
   distributed `renpy-runtime.nro` is covered by the GPL (v2 or later): ship the source with
   it. Building FFmpeg as LGPL would need its own build and relinking materials.

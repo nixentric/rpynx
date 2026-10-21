@@ -34,7 +34,7 @@ class Api:
         self._tmp = None                     # unpacked archive; lives until the next analysis
         self._loaded = None                  # load() result for the last analysis
         self._cancel = threading.Event()
-        self._exporting = threading.Lock()   # main() waits on it before quitting
+        self._working = threading.Lock()     # export or compare; main() waits on it before quitting
 
     def _js(self, function, *args):
         if self._window:
@@ -51,7 +51,8 @@ class Api:
         except imp.Refused:
             seven = None
         return {"7-Zip": bool(seven), "ffprobe": bool(imp.find_tool(imp.FFPROBE)),
-                "ffmpeg": bool(imp.find_tool(imp.FFMPEG))}
+                "ffmpeg": bool(imp.find_tool(imp.FFMPEG)), "unrpyc": bool(imp.find_unrpyc()),
+                "rpycdec": bool(imp.find_tool(("rpycdec",)))}
 
     def sd_cards(self):
         """Mounted drives that already have a switch/ folder: likely the Switch's SD card."""
@@ -62,7 +63,8 @@ class Api:
         return [r for r in roots if os.path.isdir(os.path.join(r, "switch"))]
 
     def pick(self, kind):
-        """A native dialog: kind is "folder", "archive", "sd" or "tools". Returns a path or None."""
+        """A native dialog: kind is "folder", "archive", "sd", "tools" or "collection" (a folder
+        of games to compare). Returns a path or None."""
         import webview
         if kind == "archive":
             chosen = self._window.create_file_dialog(webview.FileDialog.OPEN, file_types=(
@@ -75,8 +77,13 @@ class Api:
         return path
 
     def library(self, sd):
+        """The games on the target: an SD card folder, or ftp://HOST:PORT for the Switch."""
         games = []
-        for game_id, m in imp.exported_games(sd):
+        try:
+            found = imp.exported_games(sd)
+        except imp.ERRORS as e:
+            return {"error": str(e)}
+        for game_id, m in found:
             try:
                 text = imp.report(m) if m else "No manifest.json: copied by hand, or not by this importer."
             except (KeyError, TypeError, AttributeError):   # an older or hand-edited manifest
@@ -84,7 +91,8 @@ class Api:
             games.append({"id": game_id, "manifest": m, "report": text})
         return {"games": games, "root": imp.games_dir(sd)}
 
-    def analyze(self, source, optimize=False, recompile=False, game_id=""):
+    def analyze(self, source, optimize=False, recompile=False, game_id="", decompile=""):
+        """decompile: "", or the rsl_import.DECOMPILERS tool the page's Decompile option chose."""
         game_id = (game_id or "").strip()
         if game_id and imp.make_id(game_id) != game_id:
             return {"error": "Game id: use lowercase a-z, 0-9 and '-' only (try %r)." % imp.make_id(game_id)}
@@ -92,7 +100,7 @@ class Api:
         self._drop_tmp()
         self._tmp = tempfile.mkdtemp(prefix="rsl-import-")
         try:
-            self._loaded = imp.load(source, self._tmp, game_id or None, recompile, optimize)
+            self._loaded = imp.load(source, self._tmp, game_id or None, recompile, optimize, decompile or None)
         except (imp.Refused, OSError) as e:
             return {"error": str(e)}
         m = self._loaded[0]
@@ -102,7 +110,7 @@ class Api:
         if not self._loaded:
             return {"error": "Analyze a game first."}
         if not sd:
-            return {"error": "Choose the SD card first."}
+            return {"error": "Choose where to export first."}
         manifest, gamedir, files, extra = self._loaded
         last = [0.0]
 
@@ -113,18 +121,46 @@ class Api:
                 last[0] = time.monotonic()
                 self._js("progress", done, total, rel, note)
 
-        with self._exporting:
+        with self._working:
             self._cancel.clear()
             try:
                 dest = imp.export(manifest, gamedir, files, sd, replace, extra, progress)
             except Cancelled:
-                return {"error": "Export cancelled. The SD card is as it was before."}
-            except (imp.Refused, OSError) as e:
+                return {"error": "Export cancelled. The %s is as it was before." % (
+                    "Switch" if imp.is_ftp(sd) else "SD card")}
+            except imp.ERRORS as e:
                 return {"error": str(e)}
         return {"dest": dest, "manifest": manifest, "report": imp.report(manifest)}   # notes failed re-encodes
 
+    def delete(self, sd, game_id, saves=False):
+        """Removes games/<id>/ from the target; saves/<id>/ too only if saves."""
+        try:
+            imp.delete_game(sd, game_id, saves)
+        except imp.ERRORS as e:
+            return {"error": str(e)}
+        return {}
+
+    def compare(self, folder, sd):
+        """Read-only: the games in folder against the target's library."""
+        if not sd:
+            return {"error": "Choose a target first."}
+
+        def progress(done, total, name):
+            if self._cancel.is_set():
+                raise Cancelled()
+            self._js("compareProgress", done, total, name)
+
+        with self._working:
+            self._cancel.clear()
+            try:
+                return {"rows": imp.compare(folder, sd, progress)}
+            except Cancelled:
+                return {"error": "Comparison cancelled."}
+            except imp.ERRORS as e:
+                return {"error": str(e)}
+
     def cancel(self):
-        self._cancel.set()   # export's progress callback raises at the next file
+        self._cancel.set()   # export's or compare's progress callback raises at the next step
 
 
 def unify_title_bar(window):
@@ -175,7 +211,7 @@ def main():
 
     webview.start(bind, window)
     api.cancel()             # window closed during an export: roll it back first
-    with api._exporting:
+    with api._working:
         pass
     api._drop_tmp()
 

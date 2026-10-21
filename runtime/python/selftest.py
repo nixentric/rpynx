@@ -135,14 +135,41 @@ def _():
     os.replace(p, final)
     with open(final, "rb") as f:
         assert f.read() == payload
-    jp = os.path.join(d, "セーブ.txt")  # Japanese file name
-    with open(jp, "w", encoding="utf-8") as f:
-        f.write("こんにちは")
-    assert sorted(os.listdir(d)) == sorted(["save.bin", os.path.basename(jp)])
+    assert os.listdir(d) == ["save.bin"]
     assert os.stat(final).st_size == len(payload)
     shutil.rmtree(d)
     assert not os.path.exists(d)
     return base
+
+
+@check("non-ASCII file names", required=False)
+def _():
+    # Run 20: the SD parses names as Shift-JIS (セーブ.txt fails, フォルダ works) and lists
+    # none of them. That is the platform, not this runtime, and the importer packs such files
+    # into an .rpa, so this is reported, not failed.
+    import shutil, tempfile, unicodedata
+    d = os.path.join(SCRATCH or tempfile.mkdtemp(), "selftest-ja")
+    shutil.rmtree(d, ignore_errors=True)
+    os.makedirs(d)
+    cases = [("latin file", "café.txt"), ("japanese file", "セーブ.txt"),
+             ("japanese NFD file", unicodedata.normalize("NFD", "ブ.txt")), ("japanese folder", "フォルダ")]
+    failed = []
+    for label, name in cases:
+        p = os.path.join(d, name)
+        try:
+            if "folder" in label:
+                os.mkdir(p)
+            else:
+                with open(p, "w", encoding="utf-8") as f:
+                    f.write("こんにちは")
+            os.stat(p)
+        except OSError as e:
+            failed.append("%s %s (%s)" % (label, os.fsencode(name).hex(), e.strerror))
+    found = sorted(os.listdir(d))
+    shutil.rmtree(d, ignore_errors=True)
+    info = "fs encoding %s, utf8_mode %d, listed %r" % (sys.getfilesystemencoding(), sys.flags.utf8_mode, found)
+    assert not failed, "; ".join(failed) + "; " + info
+    return info
 
 
 @check("memory")

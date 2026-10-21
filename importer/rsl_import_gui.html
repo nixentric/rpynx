@@ -63,13 +63,20 @@ button { display: inline-flex; align-items: center; justify-content: center; gap
 button:hover { background: var(--accent); }
 button.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
 button.primary:hover { opacity: .9; }
+button.danger { background: var(--destructive); border-color: var(--destructive); color: #fff; }
+button.danger:hover { opacity: .9; }
 button:disabled { opacity: .5; pointer-events: none; }
 button:focus-visible, input:focus-visible { outline: none; border-color: var(--ring);
                                             box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent); }
 input[type=text] { height: 36px; width: 260px; padding: 0 12px; font: inherit; font-size: 14px;
                    color: var(--foreground); background: transparent; border: 1px solid var(--input);
                    border-radius: 8px; box-shadow: var(--shadow); }
-input[type=checkbox] { width: 16px; height: 16px; margin: 0; accent-color: var(--primary); }
+input[type=checkbox], input[type=radio] { width: 16px; height: 16px; margin: 0; accent-color: var(--primary); }
+.choice { margin: 0 0 8px 24px; }
+.choice label { align-items: start; margin: 6px 0; font-size: 13px; }
+.choice label > input { margin-top: 2px; flex: none; }
+.choice label > span > span { display: block; }
+.choice .why { color: var(--muted-fg); }
 label { display: flex; gap: 8px; align-items: center; margin: 10px 0; font-size: 14px; }
 label.field { gap: 12px; }
 
@@ -120,8 +127,13 @@ progress:indeterminate { background: linear-gradient(90deg, var(--muted) 35%, va
                          0 0 / 300% 100%; animation: busy 1.4s linear infinite; }
 progress:indeterminate::-webkit-progress-bar { background: transparent; }
 @keyframes busy { from { background-position: 100% 0; } to { background-position: 0 0; } }
-#status { margin-top: 12px; min-height: 1.5em; font-size: 13px; color: var(--muted-fg); word-break: break-word; }
-#status.error { color: var(--destructive); }
+.status { margin-top: 12px; min-height: 1.5em; font-size: 13px; color: var(--muted-fg); word-break: break-word; }
+.status.error { color: var(--destructive); }
+.confirm { margin-top: 16px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--destructive) 45%, var(--border));
+           border-radius: 8px; background: color-mix(in srgb, var(--destructive) 6%, transparent); font-size: 13px; }
+.confirm[hidden] { display: none; }
+.confirm b { font-weight: 600; }
+.confirm code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .alert { display: grid; grid-template-columns: 16px 1fr auto; gap: 10px; align-items: start; margin: 4px 0 12px 24px;
          padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--border));
          border-radius: 8px; background: color-mix(in srgb, var(--amber) 8%, transparent); font-size: 13px; }
@@ -130,6 +142,12 @@ progress:indeterminate::-webkit-progress-bar { background: transparent; }
 .alert b { font-weight: 500; }
 .alert .why { color: var(--muted-fg); }
 .alert button { height: 30px; padding: 0 12px; font-size: 13px; }
+table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+table[hidden] { display: none; }
+th { text-align: left; font-size: 12px; font-weight: 500; color: var(--muted-fg); padding: 6px 8px; }
+td { padding: 10px 8px; border-top: 1px solid var(--border); vertical-align: top; word-break: break-word; }
+td .chip { margin-top: 0; }
+#cmp-folder { font-weight: 400; color: var(--muted-fg); word-break: break-all; }
 .tool { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; font-size: 13px; }
 .tool::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 .tool.missing::before { background: var(--red); }
@@ -145,24 +163,43 @@ progress:indeterminate::-webkit-progress-bar { background: transparent; }
   <nav>
     <button data-view="library" class="on"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Library</button>
     <button data-view="import"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Import</button>
-    <button data-view="sd"><svg viewBox="0 0 24 24"><path d="M6 2h9l4 4v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM9 6v3M12 6v3M15 7v2"/></svg>SD card</button>
+    <button data-view="sd"><svg viewBox="0 0 24 24"><path d="M6 2h9l4 4v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM9 6v3M12 6v3M15 7v2"/></svg>Target</button>
   </nav>
 </aside>
 <main>
 <section id="library" class="on">
   <header>
-    <div><h2>Games on the SD card</h2><div class="muted small" id="lib-sub">No SD card chosen</div></div>
-    <button class="primary" data-go="import"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Import</button>
+    <div><h2>Library</h2><div class="muted small" id="lib-sub">No target chosen</div></div>
+    <div class="row"><button id="compare-pick" disabled>Compare with folder…</button>
+      <button class="primary" data-go="import"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Import</button></div>
   </header>
   <div class="card" id="lib-empty">
-    <h3>No SD card chosen</h3>
-    <div class="muted small">Choose the SD card to see the games already on it.</div>
-    <div class="row" style="margin-top:16px"><button data-go="sd">Choose SD card…</button></div>
+    <h3>No target chosen</h3>
+    <div class="muted small">Choose the SD card, or connect to the Switch over Wi-Fi, to see the games already on it.</div>
+    <div class="row" style="margin-top:16px"><button data-go="sd">Choose target…</button></div>
   </div>
+  <div class="status" id="lib-status"></div>
   <div class="grid" id="grid"></div>
   <div class="card" id="detail" hidden>
-    <div class="row"><h3 id="detail-title" style="margin:0"></h3><span id="detail-chip"></span></div>
+    <div class="row"><h3 id="detail-title" style="margin:0"></h3><span id="detail-chip"></span>
+      <button id="delete" style="margin-left:auto">Delete…</button></div>
+    <div class="confirm" id="confirm" hidden>
+      <b>Delete <span id="confirm-name"></span>?</b>
+      <div class="muted">Removes <code id="confirm-path"></code> from <span id="confirm-target"></span>.
+        Its saves stay in <code id="confirm-saves"></code> unless you tick the box.</div>
+      <label><input type="checkbox" id="delete-saves"> Also delete its saves</label>
+      <div class="row"><button class="danger" id="confirm-delete">Delete</button><button id="confirm-keep">Keep</button></div>
+    </div>
     <pre id="detail-report"></pre>
+  </div>
+  <div class="card" id="compare" hidden>
+    <div class="row"><h3 style="margin:0">Compared with <span id="cmp-folder"></span></h3>
+      <span class="row" style="margin-left:auto"><button id="cmp-again">Compare again</button><button id="cmp-cancel" disabled>Cancel</button></span></div>
+    <div class="muted small">Read-only: nothing is copied or deleted. Archives are unpacked to check them, which can take a while.</div>
+    <div class="row" style="margin-top:12px"><progress id="cmp-bar" value="0" max="1"></progress></div>
+    <div class="status" id="cmp-status"></div>
+    <table id="cmp-table" hidden><thead><tr><th style="width:34%">Game</th><th style="width:150px">State</th><th>Details</th></tr></thead>
+      <tbody id="cmp-rows"></tbody></table>
   </div>
 </section>
 
@@ -191,6 +228,22 @@ progress:indeterminate::-webkit-progress-bar { background: transparent; }
     <div><b>Suggested for this game</b><div class="why"></div></div>
     <button data-enable="recompile">Turn on</button>
   </div>
+    <label><input type="checkbox" id="decompile"> Decompile: rebuild the .rpy of .rpyc that have none, then recompile (Ren'Py 7)</label>
+    <div class="choice">
+      <label><input type="radio" name="decompiler" value="unrpyc" checked>
+        <span><b>unrpyc</b> (default)
+        <span>Pros: the long-standing Ren'Py decompiler; runs on the importer's own Python (3.9+); a script it cannot read is named and the rest are still decompiled.</span>
+        <span class="why">Cons: not on pip, run third_party/unrpyc/fetch.sh once; made for Ren'Py 8, reads 7 and 6.18 or newer; not in the packaged program.</span></span></label>
+      <label><input type="radio" name="decompiler" value="rpycdec">
+        <span><b>rpycdec</b>
+        <span>Pros: one install, pip install rpycdec; tested on Ren'Py 7.6.3 and 8.x by recompiling what it writes.</span>
+        <span class="why">Cons: needs Python 3.10+ (not macOS's own python3); stops at the first script it cannot read, so one broken file blocks the game; its package adds stand-in renpy/store modules to that Python.</span></span></label>
+    </div>
+  <div class="alert" id="hint-decompile" hidden>
+    <svg viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3zM12 10v4M12 17.5h.01"/></svg>
+    <div><b>Suggested for this game</b><div class="why"></div></div>
+    <button data-enable="decompile">Turn on</button>
+  </div>
     <label class="field">Game id <input type="text" id="game-id" placeholder="Blank: made from the title"></label>
     <div class="sep"></div>
     <div class="row"><span class="muted small">Tools</span><span id="tools"></span>
@@ -203,24 +256,33 @@ progress:indeterminate::-webkit-progress-bar { background: transparent; }
   </div>
   <div class="card">
     <h3>Export</h3>
-    <div class="row"><span class="muted small">SD card</span><strong id="sd-label">not chosen</strong><button data-go="sd">Change…</button></div>
+    <div class="row"><span class="muted small">Target</span><strong id="sd-label">not chosen</strong><button data-go="sd">Change…</button></div>
     <label><input type="checkbox" id="replace"> Replace an existing export of this game (saves are kept)</label>
     <div class="row" style="margin-top:16px">
       <button class="primary" id="export" disabled>Export</button><button id="cancel" disabled>Cancel</button>
       <progress id="bar" value="0" max="1"></progress>
     </div>
-    <div id="status"></div>
+    <div class="status" id="status"></div>
   </div>
 </section>
 
 <section id="sd">
-  <header><div><h2>SD card</h2>
-    <div class="muted small">Its top folder: E:\ on Windows, /Volumes/&lt;name&gt; on macOS. Games go to
-      switch/renpy-loader/games/&lt;id&gt;.</div></div></header>
+  <header><div><h2>Target</h2>
+    <div class="muted small">Where the library is read from and games are exported to. Games go to
+      switch/renpy-loader/games/&lt;id&gt;.</div>
+    <div class="row small" style="margin-top:8px"><span class="muted">Now</span><strong id="sd-path">not chosen</strong></div></div></header>
   <div class="card">
-    <h3>Export target</h3>
-    <div class="row" style="margin-top:12px"><strong id="sd-path">not chosen</strong><button data-pick="sd">Choose…</button></div>
-    <div id="sd-found" class="row" style="margin-top:12px"></div>
+    <h3>SD card</h3>
+    <div class="muted small">Its top folder: E:\ on Windows, /Volumes/&lt;name&gt; on macOS.</div>
+    <div class="row" style="margin-top:12px"><button data-pick="sd">Choose folder…</button><span id="sd-found" class="row"></span></div>
+  </div>
+  <div class="card">
+    <h3>Switch over Wi-Fi (FTP)</h3>
+    <div class="muted small">Turn on sphaira's FTP server on the Switch and enter the address it shows. It stops
+      while the loader or a game runs, and its address can change. Uploads run at about 1–2 MB/s.</div>
+    <div class="row" style="margin-top:12px"><input type="text" id="ftp-host" placeholder="192.168.1.20:5000"
+      spellcheck="false" autocapitalize="off"><button id="ftp-connect">Connect</button></div>
+    <div class="status" id="ftp-status"></div>
   </div>
 </section>
 </main>
@@ -229,7 +291,7 @@ progress:indeterminate::-webkit-progress-bar { background: transparent; }
 "use strict";
 if (/Mac/.test(navigator.platform)) document.documentElement.classList.add("mac");
 const $ = id => document.getElementById(id);
-const state = {sd: null, source: null, analyzed: null, busy: null, cancelling: false};
+const state = {sd: null, source: null, analyzed: null, busy: null, cancelling: false, selected: null};
 let api = null;
 
 async function call(name, ...args) {
@@ -237,10 +299,11 @@ async function call(name, ...args) {
   catch (e) { return {error: "Unexpected error, please report it: " + (e && e.message || e)}; }
 }
 
-function say(text, error) {
-  $("status").textContent = text;
-  $("status").className = error ? "error" : "";
+function say(text, error, id = "status") {
+  $(id).textContent = text;
+  $(id).className = "status" + (error ? " error" : "");
 }
+const isFtp = target => /^ftp:\/\//i.test(target || "");
 
 function show(view) {
   document.querySelectorAll("section").forEach(s => s.classList.toggle("on", s.id === view));
@@ -252,10 +315,13 @@ function show(view) {
 // rsl_import writes only "experimental" or "unsupported"; Review is experimental with
 // warnings or Switch performance issues worth reading first.
 function chip(m) {
-  const [cls, text] = !m ? ["none", "No manifest"]
+  return chipOf(...(!m ? ["none", "No manifest"]
     : m.status === "unsupported" ? ["bad", "Unsupported"]
     : (m.warnings || []).length || ((m.performance || {}).issues || []).length ? ["warn", "Review"]
-    : ["ok", "Experimental"];
+    : ["ok", "Experimental"]));
+}
+
+function chipOf(cls, text) {
   const span = document.createElement("span");
   span.className = "chip " + cls;
   span.textContent = text;
@@ -272,10 +338,14 @@ async function refreshLibrary() {
   const grid = $("grid");
   grid.replaceChildren();
   $("detail").hidden = true;
+  say("", false, "lib-status");
   $("lib-empty").hidden = !!state.sd;
-  if (!state.sd) { $("lib-sub").textContent = "No SD card chosen"; return; }
+  if (!state.sd) { $("lib-sub").textContent = "No target chosen"; return; }
+  if (isFtp(state.sd)) $("lib-sub").textContent = "Reading the library from the Switch…";
+  const gen = state.libGen = (state.libGen || 0) + 1;
   const r = await call("library", state.sd);
-  if (r.error) { $("lib-sub").textContent = r.error; return; }
+  if (gen !== state.libGen) return;   // a newer refresh started while this one waited on the Switch
+  if (r.error) { $("lib-sub").textContent = ""; say(r.error, true, "lib-status"); return; }
   const n = r.games.length;
   $("lib-sub").textContent = r.root + " · " + (n === 1 ? "1 game" : n + " games");
   for (const g of r.games) {
@@ -297,9 +367,11 @@ async function refreshLibrary() {
     card.append(cover, name, chip(g.manifest));
     card.onclick = () => {
       grid.querySelectorAll(".game").forEach(c => c.classList.toggle("sel", c === card));
+      state.selected = {id: g.id, name: name.textContent};
       $("detail-title").textContent = name.textContent;
       $("detail-chip").replaceChildren(chip(g.manifest));
       $("detail-report").textContent = g.report;
+      $("confirm").hidden = true;
       $("detail").hidden = false;
     };
     grid.append(card);
@@ -308,9 +380,10 @@ async function refreshLibrary() {
 
 function setSd(path) {
   state.sd = path;
+  $("compare").hidden = true;   // its results were for the previous target
   $("sd-path").textContent = $("sd-label").textContent = path;
   updateButtons();
-  refreshLibrary();
+  if ($("library").classList.contains("on")) refreshLibrary();   // show() refreshes it otherwise
 }
 
 async function showTools() {
@@ -330,7 +403,10 @@ function updateButtons() {
   $("analyze").disabled = !!state.busy || !state.source;
   $("export").disabled = !!state.busy || !m || m.status === "unsupported" || !state.sd;
   $("cancel").disabled = state.busy !== "export";
-  document.querySelectorAll("[data-pick], [data-enable], input").forEach(e => e.disabled = !!state.busy);
+  document.querySelectorAll("[data-pick], [data-enable], input, #delete, #confirm-delete, #ftp-connect")
+    .forEach(e => e.disabled = !!state.busy);
+  $("compare-pick").disabled = $("cmp-again").disabled = !!state.busy || !state.sd;
+  $("cmp-cancel").disabled = state.busy !== "compare";
 }
 
 function invalidate() {
@@ -343,7 +419,7 @@ function invalidate() {
 
 // rsl_import decides which options would help (suggested_options, with why); this only shows it.
 function showHints(suggested) {
-  for (const option of ["optimize", "recompile"]) {
+  for (const option of ["optimize", "recompile", "decompile"]) {
     const hint = $("hint-" + option);
     hint.hidden = !suggested[option];
     hint.querySelector(".why").textContent = suggested[option] || "";
@@ -370,7 +446,9 @@ async function analyze() {
   updateButtons();
   say("Analyzing… unpacking an archive and checking videos can take a while.");
   $("bar").removeAttribute("value");
-  const r = await call("analyze", state.source, $("optimize").checked, $("recompile").checked, $("game-id").value);
+  const decompiler = $("decompile").checked ? document.querySelector("[name=decompiler]:checked").value : "";
+  const r = await call("analyze", state.source, $("optimize").checked, $("recompile").checked, $("game-id").value,
+                       decompiler);
   state.busy = null;
   $("bar").value = 0;
   if (r.error) {
@@ -382,7 +460,7 @@ async function analyze() {
     showHints(suggested);
     const hint = Object.keys(suggested).length ? " Suggested options are marked above." : "";
     if (m.status === "unsupported") say("This game cannot be exported as it is: " + m.reasons[0] + hint, true);
-    else say((state.sd ? "Ready to export." : "Ready. Choose the SD card, then Export.") + hint);
+    else say((state.sd ? "Ready to export." : "Ready. Choose a target, then Export.") + hint);
   }
   updateButtons();
 }
@@ -391,7 +469,7 @@ async function exportGame() {
   state.busy = "export";
   state.cancelling = false;
   updateButtons();
-  say("Exporting…");
+  say(isFtp(state.sd) ? "Uploading to the Switch…" : "Exporting…");
   const r = await call("export", state.sd, $("replace").checked);
   state.busy = null;
   if (r.error) {
@@ -404,13 +482,93 @@ async function exportGame() {
   updateButtons();
 }
 
+async function deleteGame() {
+  const game = state.selected, saves = $("delete-saves").checked;
+  state.busy = "delete";
+  updateButtons();
+  say(isFtp(state.sd) ? "Deleting… over FTP this can take a minute." : "Deleting…", false, "lib-status");
+  const r = await call("delete", state.sd, game.id, saves);
+  state.busy = null;
+  updateButtons();
+  if (r.error) { say(r.error, true, "lib-status"); return; }
+  await refreshLibrary();
+  say(`Deleted ${game.name}.` + (saves ? " Its saves were deleted too." : " Its saves are kept."), false, "lib-status");
+}
+
+async function connectFtp() {
+  const address = $("ftp-host").value.trim().replace(/^ftp:\/\//i, "").replace(/\/+$/, "");
+  if (!address) return;
+  const target = "ftp://" + address;
+  state.busy = "connect";
+  updateButtons();
+  say("Connecting…", false, "ftp-status");
+  const r = await call("library", target);
+  state.busy = null;
+  updateButtons();
+  if (r.error) { say(r.error, true, "ftp-status"); return; }
+  const n = r.games.length;
+  say("Connected: " + (n === 1 ? "1 game" : n + " games") + " on the Switch.", false, "ftp-status");
+  setSd(target);
+}
+
+// rsl_import.compare's states, in its order.
+const COMPARE = {different: ["warn", "Different"], missing: ["none", "Not on the Switch"],
+                 only: ["none", "Only on the Switch"], unknown: ["warn", "Can't compare"],
+                 unreadable: ["bad", "Not a game"], same: ["ok", "Same"]};
+
+async function compareWith(folder) {
+  state.compareFolder = folder;
+  state.busy = "compare";
+  state.cancelling = false;
+  updateButtons();
+  $("compare").hidden = false;
+  $("cmp-folder").textContent = folder;
+  $("cmp-table").hidden = true;
+  $("cmp-bar").removeAttribute("value");
+  say("Reading the library…", false, "cmp-status");
+  $("compare").scrollIntoView({block: "nearest"});
+  const r = await call("compare", folder, state.sd);
+  state.busy = null;
+  updateButtons();
+  $("cmp-bar").value = 0;
+  if (r.error) { say(r.error, true, "cmp-status"); return; }
+  const counts = {};
+  const rows = r.rows.map(row => {
+    counts[row.state] = (counts[row.state] || 0) + 1;
+    const game = document.createElement("td"), title = document.createElement("div"), sub = document.createElement("div");
+    title.textContent = row.title;
+    sub.className = "muted";
+    sub.textContent = [row.source, row.id && "games/" + row.id].filter(Boolean).join(" → ");
+    game.append(title, sub);
+    const st = document.createElement("td"), why = document.createElement("td");
+    st.append(chipOf(...COMPARE[row.state]));
+    why.textContent = row.why.join("; ");
+    const tr = document.createElement("tr");
+    tr.append(game, st, why);
+    return tr;
+  });
+  $("cmp-rows").replaceChildren(...rows);
+  $("cmp-table").hidden = !rows.length;
+  $("cmp-bar").value = $("cmp-bar").max;
+  say(Object.keys(COMPARE).filter(k => counts[k]).map(k => `${counts[k]} ${COMPARE[k][1]}`).join(" · ")
+      || "No games in the folder or the library.", false, "cmp-status");
+}
+
 // Called from Python.
+window.compareProgress = (done, total, name) => {
+  $("cmp-bar").max = Math.max(total, 1);
+  $("cmp-bar").value = done;
+  if (name && !state.cancelling) say(`Checking ${done + 1} of ${total}: ${name}`, false, "cmp-status");
+};
+
+// Called from Python. Over FTP, done also counts the part of the current file sent.
 window.progress = (done, total, rel, note) => {
   $("bar").max = Math.max(total, 1);
   $("bar").value = done;
   if (state.cancelling) return;
-  if (note) say(`${note[0].toUpperCase() + note.slice(1)}: ${rel} (file ${done + 1} of ${total}; this can take minutes)`);
-  else if (rel) say(`Copying ${done + 1} of ${total}: ${rel}`);
+  const file = Math.floor(done) + 1, part = done % 1 ? ` (${Math.floor(done % 1 * 100)}%)` : "";
+  if (note) say(`${note[0].toUpperCase() + note.slice(1)}: ${rel} (file ${file} of ${total}; this can take minutes)`);
+  else if (rel) say(`${isFtp(state.sd) ? "Uploading" : "Copying"} ${file} of ${total}${part}: ${rel}`);
 };
 window.dropped = path => {
   if (state.busy) return;
@@ -428,10 +586,10 @@ document.querySelectorAll("[data-pick]").forEach(b => b.onclick = async () => {
   else if (kind === "tools") { showTools(); invalidate(); }
   else setSource(path);
 });
-for (const id of ["optimize", "recompile", "game-id"]) {
-  $(id).addEventListener("change", invalidate);
-  $(id).addEventListener("input", invalidate);
-}
+document.querySelectorAll("#optimize, #recompile, #decompile, [name=decompiler], #game-id").forEach(e => {
+  e.addEventListener("change", invalidate);
+  e.addEventListener("input", invalidate);
+});
 document.querySelectorAll("[data-enable]").forEach(b => b.onclick = () => {
   $(b.dataset.enable).checked = true;
   invalidate();
@@ -439,10 +597,33 @@ document.querySelectorAll("[data-enable]").forEach(b => b.onclick = () => {
 });
 $("analyze").onclick = analyze;
 $("export").onclick = exportGame;
+$("delete").onclick = () => {
+  const id = state.selected.id;
+  $("confirm-name").textContent = state.selected.name;
+  $("confirm-path").textContent = `games/${id}/`;
+  $("confirm-target").textContent = state.sd;
+  $("confirm-saves").textContent = `switch/renpy-loader/saves/${id}/`;
+  $("delete-saves").checked = false;
+  $("confirm").hidden = false;
+};
+$("confirm-keep").onclick = () => $("confirm").hidden = true;
+$("confirm-delete").onclick = deleteGame;
+$("ftp-connect").onclick = connectFtp;
+$("compare-pick").onclick = async () => {
+  const path = await call("pick", "collection");
+  if (path && !path.error) compareWith(path);
+};
+$("cmp-again").onclick = () => compareWith(state.compareFolder);
+$("cmp-cancel").onclick = () => {
+  state.cancelling = true;
+  call("cancel");
+  say("Cancelling after the current game…", false, "cmp-status");
+};
+$("ftp-host").addEventListener("keydown", e => { if (e.key === "Enter") connectFtp(); });
 $("cancel").onclick = () => {
   state.cancelling = true;
   call("cancel");
-  say("Cancelling after the current file…");
+  say(isFtp(state.sd) ? "Cancelling…" : "Cancelling after the current file…");
 };
 const drop = $("drop");
 document.addEventListener("dragover", e => e.preventDefault());   // allows the drop; Python reads the path

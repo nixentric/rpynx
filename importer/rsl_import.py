@@ -7,18 +7,23 @@ report and, with --out, an SD-ready tree:
     <out>/switch/renpy-loader/games/<id>/game/...
     <out>/switch/renpy-loader/games/<id>/manifest.json
 
+--out ftp://HOST:PORT uploads the same tree to the Switch over sphaira's FTP server.
+
 Standard library only; runs on Python 3.9+ on Windows, macOS (/usr/bin/python3) and
 Linux; importer/rsl_import_gui.py is a window over the same functions. It never executes
 game code, never unpickles anything and never writes to the source. The optional --decompile
-hands copies of .rpyc files to rpycdec, run in its own process. See docs/IMPORTER.md.
+hands copies of .rpyc files to unrpyc, run in its own process. See docs/IMPORTER.md.
 
 usage: python3 importer/rsl_import.py SOURCE [--out DIR] [--id ID] [--replace]
 """
 import argparse
+import contextlib
+import ftplib
 import hashlib
 import io
 import json
 import os
+import pickle
 import pickletools
 import posixpath
 import re
@@ -28,6 +33,8 @@ import struct
 import subprocess
 import sys
 import tempfile
+import unicodedata
+import urllib.parse
 import zipfile
 import zlib
 
@@ -76,13 +83,26 @@ ENCODERS = {
     "vp8": ["-c:v", "libvpx", "-crf", "8", "-b:v", "8M", "-deadline", "good", "-cpu-used", "1"],
     "h264": ["-c:v", "libx264", "-crf", "20", "-preset", "slow", "-profile:v", "high"],
 }
-RPYCDEC_TIMEOUT = 600             # seconds for all of a game's sourceless scripts
+# --decompile: third_party/unrpyc/fetch.sh puts unrpyc here; it runs on the importer's Python.
+UNRPYC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      "build-unrpyc", "unrpyc", "unrpyc.py")
+DECOMPILERS = ("unrpyc", "rpycdec")   # --decompiler; the first is the default (docs/IMPORTER.md compares them)
+DECOMPILE_TIMEOUT = 600           # seconds for all of a game's sourceless scripts
 JUNK = {".DS_Store", "Thumbs.db", "desktop.ini", "__MACOSX"}
 LAUNCHER_EXTS = (".exe", ".sh", ".py", ".app")
+LIBRARY = "switch/renpy-loader"   # games/, saves/ and logs/ under the SD card root
+FTP_PORT = 5000                   # sphaira's FTP server
+FTP_TIMEOUT = 10                  # seconds, per network operation
+FTP_BLOCK = 64 << 10
+PACKED = "rsl-nonascii"             # game/rsl-nonascii[-N].rpa: files the Switch SD cannot name
+PACKED_MAX = 2 << 30               # bytes per archive, well under FAT32's 4 GiB
 
 
 class Refused(Exception):
     """The source cannot be imported; the message says why."""
+
+
+ERRORS = (Refused,) + ftplib.all_errors   # what the user can act on: refusals, disk and network
 
 
 def make_id(text):
@@ -569,6 +589,35 @@ def rpa_index(path):
     return out
 
 
+def packable(rel):
+    """True for a non-ASCII name that the export puts into a PACKED archive. The Switch SD
+    parses names as Shift-JIS and lists none of them (hardware run 20); Ren'Py reads
+    names inside an archive itself. It loads no scripts or archives from an archive, so
+    those stay loose."""
+    return not rel.isascii() and not rel.lower().endswith((".rpy", ".rpym", "_ren.py", ".rpa"))
+
+
+class Rpa:
+    """Writes an RPA-3.0 archive (Ren'Py's own format, key 0), one member at a time."""
+
+    def __init__(self, path):
+        self.path, self.index, self.f = path, {}, open(path, "wb")
+        self.f.write(b"RPA-3.0 %016x %08x\n" % (0, 0))
+
+    def add(self, name, source):
+        start = self.f.tell()
+        with open(source, "rb") as src:
+            shutil.copyfileobj(src, self.f, 1 << 20)
+        self.index[name] = [(start, self.f.tell() - start)]
+
+    def close(self):
+        offset = self.f.tell()
+        self.f.write(zlib.compress(pickle.dumps(self.index, 2)))
+        self.f.seek(0)
+        self.f.write(b"RPA-3.0 %016x %08x\n" % (offset, 0))
+        self.f.close()
+
+
 def archive_media(gamedir, files, workdir, warnings):
     """Media inside the game's .rpa archives, as {rel: (archive, offset, length, prefix)},
     plus the archives whose contents cannot be checked."""
@@ -738,9 +787,8 @@ def recompile_files(files, warnings, decompile=False):
     orphans = sorted(r for r in compiled if r[:-1] not in names)
     outside = [r for r in orphans if not r.startswith("tl/")]
     if outside and not decompile:
-        raise Refused("--recompile: %d compiled scripts have no .rpy source (%s); to rebuild them, "
-                      "install rpycdec (`pip install rpycdec`, Python 3.10+) and add --decompile"
-                      % (len(outside), examples(outside)))
+        raise Refused("--recompile: %d compiled scripts have no .rpy source (%s); add --decompile to "
+                      "rebuild them with unrpyc" % (len(outside), examples(outside)))
     if orphans and not decompile:
         warnings.append("--recompile left out %d compiled translation files with no source (%s); "
                         "those translations may be missing" % (len(orphans), examples(orphans)))
@@ -748,59 +796,96 @@ def recompile_files(files, warnings, decompile=False):
                     "launch (slow once). Python 2 code can behave differently under Python 3 without "
                     "any error (for example, / on integers gives a float), so check the game's logic; "
                     "saves from the original game will not load")
-    kept = [(r, s) for r, s in files if not r.lower().endswith((".rpyc", ".rpymc")) and not r.startswith("cache/")]
-    return kept, orphans if decompile else []
+    return recompiled(files), orphans if decompile else []
 
 
-def decompile_scripts(gamedir, compiled, python, workdir, warnings):
-    """--decompile: rebuild the .rpy of compiled scripts with rpycdec, an external tool.
-    It unpickles them, so it runs in its own process on copies in workdir, never in the
-    importer. python: an interpreter that has rpycdec, else rpycdec on PATH.
+def recompiled(files):
+    """What --recompile exports: no compiled scripts, no cache/."""
+    return [(r, s) for r, s in files if not r.lower().endswith((".rpyc", ".rpymc")) and not r.startswith("cache/")]
+
+
+def find_unrpyc():
+    """unrpyc.py, or None. It needs a Python to run on, which a packaged importer is not."""
+    return UNRPYC if os.path.isfile(UNRPYC) and not getattr(sys, "frozen", False) else None
+
+
+def decompile_scripts(gamedir, compiled, tool, workdir, warnings, rpycdec_python=None):
+    """--decompile: rebuild the .rpy of compiled scripts with tool, "unrpyc" or "rpycdec"
+    (DECOMPILERS). Both unpickle them, so they run in their own process on copies in
+    workdir, never in the importer. A script the tool cannot decompile is refused, or under
+    tl/ left out with a warning, as recompile_files() does with sourceless ones.
+    rpycdec_python: an interpreter that has rpycdec, else rpycdec on PATH.
     Returns {decompiled .rpy: path}."""
-    tool = [python, "-m", "rpycdec"] if python else [shutil.which("rpycdec")]
-    if not tool[0]:
-        raise Refused("--decompile: rpycdec not found on PATH; install it with `pip install rpycdec` "
-                      "(Python 3.10+) or give its interpreter with --rpycdec-python")
     work = tempfile.mkdtemp(prefix="decompile-", dir=workdir)
     copies = os.path.join(work, "game")
+    env = None
+    if tool == "unrpyc":
+        if not find_unrpyc():
+            raise Refused("--decompile: unrpyc not found; fetch it with third_party/unrpyc/fetch.sh and "
+                          "run the importer with Python 3.9+ (the packaged program cannot run it)")
+        # --no-init-offset: its init offset guess is only safe for Ren'Py 8 (the output is the same game).
+        cmd = [sys.executable, UNRPYC, "--no-init-offset", copies]
+    else:
+        cmd = [rpycdec_python, "-m", "rpycdec"] if rpycdec_python else [find_tool(("rpycdec",))]
+        if not cmd[0]:
+            raise Refused("--decompile: rpycdec not found on PATH; install it with `pip install rpycdec` "
+                          "(Python 3.10+) or give its interpreter with --rpycdec-python")
+        cmd, env = cmd + ["decompile", copies], dict(os.environ, RPYCDEC_NO_WARNING="1")
     for rel in compiled:
         target = os.path.join(copies, *rel.split("/"))
         os.makedirs(os.path.dirname(target), exist_ok=True)
         shutil.copyfile(os.path.join(gamedir, *rel.split("/")), target)
     try:
         # cwd holds only the copies: `python -m` puts it on sys.path.
-        r = run(tool + ["decompile", copies], cwd=work, timeout=RPYCDEC_TIMEOUT,
-                env=dict(os.environ, RPYCDEC_NO_WARNING="1"))
+        r = run(cmd, cwd=work, timeout=DECOMPILE_TIMEOUT, env=env)
     except subprocess.TimeoutExpired:
-        raise Refused("--decompile: rpycdec did not finish in %d s" % RPYCDEC_TIMEOUT)
+        raise Refused("--decompile: %s did not finish in %d s" % (tool, DECOMPILE_TIMEOUT))
     except OSError as e:
-        raise Refused("--decompile: cannot run %s: %s" % (tool[0], e))
-    out = {rel[:-1]: os.path.join(copies, *rel[:-1].split("/")) for rel in compiled}
-    if r.returncode or not all(os.path.isfile(p) for p in out.values()):
+        raise Refused("--decompile: cannot run %s: %s" % (cmd[0], e))
+    if r.returncode:   # rpycdec stops at the first script it cannot read; unrpyc exits 0 then
         err = [l for l in r.stderr.splitlines() if l.strip()] or ["exit %d" % r.returncode]
         why = next((l for l in err if l.startswith("ERROR:")), err[-1]).replace(copies + os.sep, "")
-        raise Refused("--decompile: rpycdec failed: %s" % why[:300])
-    unknown = [rel for rel, p in out.items() if "# <unrecognized:" in read_text(p)]
-    warnings.append("decompiled %d scripts that had no .rpy source with rpycdec (%s). Decompiled "
-                    "scripts may differ from the originals: comments and formatting are lost and "
-                    "statements can be misread, so play the whole game to check"
-                    % (len(out), examples(out)))
-    if unknown:
-        warnings.append("rpycdec did not recognise some statements in %s; they are left as comments "
-                        "and the game may break there" % examples(unknown))
+        raise Refused("--decompile: %s failed: %s" % (tool, why[:300]))
+    # unrpyc goes on, logging each failure as "Error while decompiling <resolved path>:" and a traceback.
+    errors = {os.path.normcase(p) for p in re.findall(r"^Error while decompiling (.+):$", r.stdout, re.M)}
+    out, failed = {}, []
+    for rel in compiled:
+        src = os.path.join(copies, *rel.split("/"))
+        if os.path.normcase(os.path.realpath(src)) in errors or not os.path.isfile(src[:-1]):
+            failed.append(rel)
+        else:
+            out[rel[:-1]] = src[:-1]
+    cause = re.search(r"^Traceback \(most recent call last\):\n(?:[ \t].*\n)*(.+)$", r.stdout, re.M)
+    cause = " (first error: %s)" % cause.group(1)[:200] if cause else ""
+    outside = [rel for rel in failed if not rel.startswith("tl/")]
+    if outside:
+        raise Refused("--decompile: %s could not decompile %d of %d scripts (%s)%s; the game needs "
+                      "them" % (tool, len(outside), len(compiled), examples(outside), cause))
+    if failed:
+        warnings.append("%s could not decompile %d translation files (%s)%s; they are left out, so "
+                        "those translations may be missing" % (tool, len(failed), examples(failed), cause))
+    mark = {"unrpyc": "<<<COULD NOT DECOMPILE", "rpycdec": "# <unrecognized:"}[tool]
+    partial = [rel for rel, p in out.items() if mark in read_text(p)]
+    if out:
+        warnings.append("decompiled %d scripts that had no .rpy source with %s (%s). Decompiled "
+                        "scripts may differ from the originals: comments and formatting are lost and "
+                        "statements can be misread, so play the whole game to check"
+                        % (len(out), tool, examples(out)))
+    if partial:
+        warnings.append("%s could not decompile some statements in %s; they are left as comments "
+                        "(search for %r) and the game may break there" % (tool, examples(partial), mark))
     return out
 
 
 def analyze(root, kind, source, game_id=None, extract_warnings=(), recompile=False, optimize=False,
-            workdir=None, decompile=False, rpycdec_python=None):
-    """Returns (manifest, gamedir, files, {exported rel: path outside gamedir})."""
+            workdir=None, decompile=None, rpycdec_python=None):
+    """Returns (manifest, gamedir, files, {exported rel: path outside gamedir}).
+    decompile: None, or the DECOMPILERS tool to rebuild sourceless scripts with; it
+    implies recompile."""
+    recompile = recompile or bool(decompile)
     warnings = list(extract_warnings)
     reasons = []
-    basedir, gamedir = find_gamedir(root)
-    flat = gamedir == basedir   # scripts sit in basedir: leave engine/launchers out
-    excludes = (lambda n: n == "saves" or n in ("renpy", "lib") or n.lower().endswith(
-        (".exe", ".app", ".sh"))) if flat else (lambda n: n == "saves")
-    files, skipped = scan(gamedir, excludes)
+    basedir, gamedir, files, skipped = game_files(root)
     if skipped:
         warnings.append("skipped %d links or special files: %s" % (len(skipped), examples(skipped)))
     exts = {}
@@ -856,17 +941,24 @@ def analyze(root, kind, source, game_id=None, extract_warnings=(), recompile=Fal
     if recompile:
         files, orphans = recompile_files(files, warnings, decompile)
         if orphans:
-            decompiled = decompile_scripts(gamedir, orphans, rpycdec_python, workdir, warnings)
+            if decompile == "unrpyc" and vt and vt < (6, 18):
+                raise Refused("--decompile: unrpyc decompiles Ren'Py 6.18 and newer, not %s" % version)
+            decompiled = decompile_scripts(gamedir, orphans, decompile, workdir, warnings, rpycdec_python)
             files += [(r, os.path.getsize(p)) for r, p in sorted(decompiled.items())]
     elif python == "2":
         reasons.append("%s uses Python 2; there is no Python 2 runtime yet (try --recompile if it "
-                       "ships its .rpy sources, with --decompile if not)" % ("Ren'Py " + version if vt else "this game"))
+                       "ships its .rpy sources, --decompile if not)" % ("Ren'Py " + version if vt else "this game"))
         try:
-            recompile_files(files, [])
+            orphans = recompile_files(files, [], decompile=True)[1]
+        except Refused:
+            orphans = None   # .rpa archives: the reason above says what to try
+        if orphans is not None and all(r.startswith("tl/") for r in orphans):
             suggest["recompile"] = ("a Python 2 game that ships all its .rpy sources: Ren'Py 8.5.3 can "
                                     "compile them with Python 3, so it can be exported (an experiment)")
-        except Refused:
-            pass   # .rpa archives or sourceless scripts: the reason above says what to try
+        if orphans:
+            suggest["decompile"] = ("%d compiled scripts were never decompiled: they have no .rpy source "
+                                    "(%s). unrpyc or rpycdec can rebuild them, then Ren'Py 8.5.3 compiles "
+                                    "the game with Python 3 (an experiment)" % (len(orphans), examples(orphans)))
     exts = {}
     for rel, _ in files:
         ext = os.path.splitext(rel)[1].lower()
@@ -912,24 +1004,17 @@ def analyze(root, kind, source, game_id=None, extract_warnings=(), recompile=Fal
     if big:
         warnings.append("files of 2 GiB or more (%s): FAT32 SD cards cannot hold files of 4 GiB "
                         "or more; use exFAT" % examples(big))
-    nonascii = [r for r, _ in files if not r.isascii()]
-    if nonascii:
-        warnings.append("%d files with non-ASCII names (%s): creating such names on the Switch SD "
-                        "failed in hardware run 4; the game may not find them" % (
-                            len(nonascii), examples(nonascii)))
+    packed = [r for r, _ in files if packable(r)]
+    if packed:
+        warnings.append("%d files with non-ASCII names (%s) go into %s.rpa: the Switch SD cannot list "
+                        "such names (hardware run 20)" % (len(packed), examples(packed), PACKED))
+    loose = [r for r, _ in files if not r.isascii() and not packable(r)]
+    if loose:
+        warnings.append("scripts or archives with non-ASCII names (%s): Ren'Py cannot load them from an "
+                        "archive, and the Switch SD cannot list them; the game may not find them" % examples(loose))
 
-    if basedir == root and kind != "directory":
-        folder = os.path.splitext(os.path.basename(source))[0]
-    else:
-        folder = os.path.basename(os.path.normpath(basedir))
-        if flat and folder == "game":   # a game/ folder given directly
-            folder = os.path.basename(os.path.dirname(os.path.abspath(basedir)))
-        app = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(basedir))))
-        if folder == "autorun" and app.endswith(".app"):   # <Name>.app/Contents/Resources/autorun
-            folder = os.path.basename(app)[:-4]
-    title = options_title(gamedir) or folder
-    if game_id is None:
-        game_id = make_id(title) if make_id(title) != "game" else make_id(folder)
+    title, default_id = title_and_id(root, kind, source, basedir, gamedir)
+    game_id = default_id if game_id is None else game_id
     status = "unsupported" if reasons else "experimental"
     manifest = {
         "format": MANIFEST_FORMAT,
@@ -951,13 +1036,41 @@ def analyze(root, kind, source, game_id=None, extract_warnings=(), recompile=Fal
         "suggested_options": suggest,
         "decompiled": sorted(decompiled),
         "performance": {"issues": issues, "converted": convert, "coverage": coverage},
-        "sha256": {rel: sha256(os.path.join(gamedir, rel)) for rel, _ in files
-                   if rel.lower().endswith((".rpa", ".rpyc"))},
+        "sha256": script_hashes(gamedir, files),
     }
     return manifest, gamedir, files, extra
 
 
-def load(source, tmp, game_id=None, recompile=False, optimize=False, decompile=False, rpycdec_python=None):
+def game_files(root):
+    """The game directory and the files an export takes from it: (basedir, gamedir,
+    [(rel, size)], skipped links)."""
+    basedir, gamedir = find_gamedir(root)
+    flat = gamedir == basedir   # scripts sit in basedir: leave engine/launchers out
+    excludes = (lambda n: n == "saves" or n in ("renpy", "lib") or n.lower().endswith(
+        (".exe", ".app", ".sh"))) if flat else (lambda n: n == "saves")
+    return (basedir, gamedir) + scan(gamedir, excludes)
+
+
+def title_and_id(root, kind, source, basedir, gamedir):
+    """config.name or the folder/archive name, and the id made from it."""
+    if basedir == root and kind != "directory":
+        folder = os.path.splitext(os.path.basename(source))[0]
+    else:
+        folder = os.path.basename(os.path.normpath(basedir))
+        if gamedir == basedir and folder == "game":   # a game/ folder given directly
+            folder = os.path.basename(os.path.dirname(os.path.abspath(basedir)))
+        app = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(basedir))))
+        if folder == "autorun" and app.endswith(".app"):   # <Name>.app/Contents/Resources/autorun
+            folder = os.path.basename(app)[:-4]
+    title = options_title(gamedir) or folder
+    return title, make_id(title) if make_id(title) != "game" else make_id(folder)
+
+
+def script_hashes(gamedir, files):
+    return {rel: sha256(os.path.join(gamedir, rel)) for rel, _ in files if rel.lower().endswith((".rpa", ".rpyc"))}
+
+
+def load(source, tmp, game_id=None, recompile=False, optimize=False, decompile=None, rpycdec_python=None):
     """unpack() then analyze(): (manifest, gamedir, files, extra). An archive is unpacked
     into tmp, which must stay until export() is done."""
     warnings = []
@@ -967,39 +1080,324 @@ def load(source, tmp, game_id=None, recompile=False, optimize=False, decompile=F
 
 # -------------------------------------------------------------------- export
 
+def is_ftp(out):
+    return out.lower().startswith("ftp://")
+
+
 def games_dir(out):
     """<out>/switch/renpy-loader/games. A bare drive ("E:") means its root; on Windows
     "E:" alone is drive E's current folder."""
+    if is_ftp(out):
+        return "%s/%s/games" % (out.rstrip("/"), LIBRARY)
     if re.fullmatch(r"[A-Za-z]:", out):
         out += os.sep
-    return os.path.join(out, "switch", "renpy-loader", "games")
+    return os.path.join(out, *LIBRARY.split("/"), "games")
+
+
+class Local:
+    """An export root on disk (the SD card in a reader). Paths are relative to
+    switch/renpy-loader and use '/'; Ftp has the same calls."""
+
+    def __init__(self, out):
+        self.root = os.path.dirname(games_dir(out))
+
+    def path(self, p):
+        return os.path.join(self.root, *p.split("/"))
+
+    def entries(self, p):
+        """{name: is_dir}; {} when p is missing."""
+        d = self.path(p)
+        return {n: os.path.isdir(os.path.join(d, n)) for n in os.listdir(d)} if os.path.isdir(d) else {}
+
+    def read(self, p):
+        try:
+            with open(self.path(p), "rb") as f:
+                return f.read()
+        except OSError:
+            return None
+
+    def rmtree(self, p):
+        rmtree(self.path(p))
+        if os.path.lexists(self.path(p)):
+            raise OSError("could not delete all of %s" % self.path(p))
+
+    def close(self):
+        pass
+
+
+class Ftp:
+    """The Switch's SD card over FTP: sphaira's server, anonymous, ftp://HOST[:PORT], where
+    / is the SD card root. It runs only while sphaira shows it, and its address can change."""
+
+    def __init__(self, out):
+        u = urllib.parse.urlsplit(out.strip())
+        try:
+            host, port = u.hostname, u.port or FTP_PORT
+        except ValueError:
+            host = None
+        if not host:
+            raise Refused("Switch address %r: use HOST:PORT, for example 192.168.1.20:%d" % (out, FTP_PORT))
+        self.ftp, self.made = ftplib.FTP(), set()
+        try:
+            self.ftp.connect(host, port, FTP_TIMEOUT)
+            self.ftp.login()
+        except ftplib.all_errors as e:
+            self.ftp.close()
+            raise Refused("cannot reach the Switch at %s:%d (%s). Turn on sphaira's FTP server and "
+                          "check the address it shows; it can change." % (host, port, e))
+
+    def path(self, p):
+        return "/%s/%s" % (LIBRARY, p)
+
+    def entries(self, p):
+        """{name: is_dir}; {} when p is missing."""
+        try:
+            return {posixpath.basename(n): f["type"].lower() == "dir" for n, f in self.ftp.mlsd(self.path(p))
+                    if f.get("type", "").lower() in ("dir", "file")}
+        except (ftplib.error_perm, ftplib.error_temp):
+            try:
+                self.ftp.cwd(self.path(p))   # servers answer a missing folder with 450, 501 or 550
+            except (ftplib.error_perm, ftplib.error_temp):
+                return {}
+            raise
+
+    def read(self, p):
+        buf = io.BytesIO()
+        try:
+            self.ftp.retrbinary("RETR " + self.path(p), buf.write)
+        except (ftplib.error_perm, ftplib.error_temp):
+            return None
+        return buf.getvalue()
+
+    def mkdirs(self, p):
+        parts = self.path(p).split("/")
+        for i in range(2, len(parts) + 1):
+            d = "/".join(parts[:i])
+            if d not in self.made:
+                try:
+                    self.ftp.mkd(d)
+                except ftplib.error_perm:
+                    pass   # it exists
+                self.made.add(d)
+
+    def put(self, local, p, tick=lambda fraction: None):
+        """Uploads a file; tick(fraction sent) runs after each block and may raise to stop."""
+        self.mkdirs(posixpath.dirname(p))
+        size, sent = max(os.path.getsize(local), 1), [0]
+
+        def block(data):
+            sent[0] += len(data)
+            tick(sent[0] / size)
+        with open(local, "rb") as f:
+            self.ftp.storbinary("STOR " + self.path(p), f, FTP_BLOCK, block)
+
+    def write(self, p, data):
+        self.ftp.storbinary("STOR " + self.path(p), io.BytesIO(data))
+
+    def rename(self, a, b):
+        self.ftp.rename(self.path(a), self.path(b))
+
+    def rmtree(self, p):
+        self.made = {d for d in self.made if not d.startswith(self.path(p))}
+        try:
+            return self.ftp.rmd(self.path(p))   # a server may remove a whole folder at once
+        except ftplib.error_perm:
+            pass
+        for name, is_dir in self.entries(p).items():
+            if is_dir:
+                self.rmtree(p + "/" + name)
+            else:
+                self.ftp.delete(self.path(p + "/" + name))
+        self.ftp.rmd(self.path(p))
+
+    def close(self):
+        self.ftp.close()
+
+
+def library(out):
+    """The export root out as Local or Ftp."""
+    return Ftp(out) if is_ftp(out) else Local(out)
 
 
 def exported_games(out):
     """[(id, manifest)] for every games/<id>/ under an export root; manifest is None when
     there is no readable manifest.json (a game copied by hand)."""
-    games = games_dir(out)
     found = []
-    for name in sorted(os.listdir(games)) if os.path.isdir(games) else []:
-        if name.startswith(".") or not os.path.isdir(os.path.join(games, name)):
-            continue   # .rsl-import-* staging folders, stray files
-        try:
-            with open(os.path.join(games, name, "manifest.json"), encoding="utf-8") as f:
-                manifest = json.load(f)
-        except (OSError, ValueError):
-            manifest = None
-        found.append((name, manifest if isinstance(manifest, dict) else None))
+    with contextlib.closing(library(out)) as lib:
+        names = lib.entries("games")
+        for name in sorted(names):
+            if name.startswith(".") or not names[name]:
+                continue   # staging folders, stray files
+            try:
+                manifest = json.loads(lib.read("games/%s/manifest.json" % name) or b"null")
+            except ValueError:
+                manifest = None
+            found.append((name, manifest if isinstance(manifest, dict) else None))
     return found
+
+
+def delete_game(out, game_id, saves=False):
+    """Removes games/<id>/, its game/saves included: Ren'Py writes every save to saves/<id>
+    as well (savelocation.py, MultiLocation.save). saves=True also removes saves/<id>/."""
+    with contextlib.closing(library(out)) as lib:
+        if game_id.startswith(".") or game_id not in lib.entries("games"):
+            raise Refused("%s/%s is not there" % (games_dir(out), game_id))
+        lib.rmtree("games/" + game_id)
+        if saves and game_id in lib.entries("saves"):
+            lib.rmtree("saves/" + game_id)
+
+
+COMPARE_ORDER = ("different", "missing", "only", "unknown", "unreadable", "same")
+
+
+def source_name(manifest):
+    try:
+        return manifest["source"]["name"]
+    except (KeyError, TypeError):
+        return None
+
+
+def differences(manifest, gamedir, files):
+    """Why an export no longer matches its source, by what its manifest recorded from that
+    source; [] when it matches."""
+    if manifest.get("recompile"):
+        files = recompiled(files)
+    decompiled = manifest.get("decompiled") or []   # rebuilt .rpy: counted, but their sizes are unrpyc's
+    count, total = len(files) + len(decompiled), sum(s for _, s in files)
+    why = []
+    if count != manifest["files"]["count"]:
+        why.append("%d files in the folder, %d in the library" % (count, manifest["files"]["count"]))
+    delta = total - manifest["files"]["total_bytes"]
+    if not decompiled and delta:
+        n = abs(delta)
+        why.append("%s %s in the folder" % ("%.1f MB" % (n / 1e6) if n >= 1e6 else "{:,} byte{}".format(n, "s" * (n != 1)),
+                                            "more" if delta > 0 else "less"))
+    if not why:   # same files and sizes: compare the scripts themselves
+        hashes, old = script_hashes(gamedir, files), manifest["sha256"]
+        changed = sorted(r for r in set(hashes) | set(old) if hashes.get(r) != old.get(r))
+        if changed:
+            why.append("%d scripts or archives differ: %s" % (len(changed), examples(changed)))
+    return why
+
+
+def compare(collection, out, progress=None):
+    """Read-only: every game in collection (game folders and .zip/.7z/.rar files) against
+    the library at out. Returns rows {state, source, id, title, why}, state being one of
+    COMPARE_ORDER: missing = not in the library, only = only in the library, unknown = in
+    the library without a manifest, unreadable = not an importable game. Archives are
+    unpacked into a temp folder, one at a time. progress(done, total, name) may raise to stop."""
+    progress = progress or (lambda *a: None)
+    exported = dict(exported_games(out))
+    by_source = {source_name(m): i for i, m in exported.items() if source_name(m)}
+    names = sorted(n for n in os.listdir(collection) if not n.startswith(".") and not is_junk(n) and (
+        os.path.isdir(os.path.join(collection, n)) or n.lower().endswith((".zip", ".7z", ".rar"))))
+    rows, matched = [], set()
+    for done, name in enumerate(names):
+        progress(done, len(names), name)
+        row = {"source": name, "id": None, "title": name, "why": []}
+        rows.append(row)
+        tmp = tempfile.mkdtemp(prefix="rsl-compare-")
+        try:
+            source = os.path.join(collection, name)
+            # ponytail: unpacks every archive on every compare (minutes for GBs); recording the archive's
+            # size and sha256 in the manifest would let an unchanged archive skip it.
+            root, kind = unpack(source, tmp, [])
+            basedir, gamedir, files, _ = game_files(root)
+            row["title"], gid = title_and_id(root, kind, source, basedir, gamedir)
+            row["id"] = match = by_source.get(name) or (gid if gid in exported else None)
+            if match is None:
+                row["id"], row["state"] = gid, "missing"
+                continue
+            matched.add(match)
+            m = exported[match]
+            if m is None:
+                row["state"], row["why"] = "unknown", ["no manifest.json in the library (copied by hand)"]
+                continue
+            if source_name(m) not in (None, name):
+                row["why"].append("the library copy came from %s" % source_name(m))
+            try:
+                diff = differences(m, gamedir, files)
+            except (KeyError, TypeError, AttributeError):
+                row["state"], row["why"] = "unknown", ["the library's manifest.json is from an older or edited importer"]
+                continue
+            row["state"] = "different" if diff else "same"
+            row["why"] = diff + row["why"]
+        except (Refused, OSError) as e:
+            row["state"], row["why"] = "unreadable", [str(e)]
+        finally:
+            rmtree(tmp)
+    progress(len(names), len(names), "")
+    for i, m in exported.items():
+        if i not in matched:
+            rows.append({"state": "only", "source": None, "id": i, "title": (m or {}).get("title") or i, "why": []})
+    return sorted(rows, key=lambda r: (COMPARE_ORDER.index(r["state"]), str(r["title"]).lower()))
+
+
+def manifest_json(manifest):
+    return json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
+
+
+def copy_files(manifest, gamedir, files, extra, progress, put, workdir):
+    """Passes every exported file to put(local path, rel, tick); a video to re-encode is
+    written into workdir first, and packable() files go into PACKED archives built there.
+    tick(fraction) reports progress within a file."""
+    convert = manifest["performance"]["converted"]
+    extra = extra or {}
+    todo = list(dict.fromkeys([r for r, _ in files] + sorted(extra)))   # decompiled .rpy are in both
+    recode = [r for r in todo if r in convert]
+    rpa, count = None, 0
+
+    def finish(done):
+        rpa.close()
+        rel = PACKED + ("-%d" % count if count > 1 else "") + ".rpa"
+        progress(done, len(todo), rel, "")
+        put(rpa.path, rel, lambda fraction: progress(done, len(todo), rel, ""))
+        os.remove(rpa.path)
+
+    try:
+        for done, rel in enumerate(todo):
+            source = extra.get(rel) or os.path.join(gamedir, *rel.split("/"))
+            if rel in convert:
+                progress(done, len(todo), rel, "re-encoding %d/%d" % (recode.index(rel) + 1, len(recode)))
+                target = os.path.join(workdir, "reencoded" + os.path.splitext(rel)[1])
+                error = reencode(source, target, convert[rel])
+                if error:
+                    del convert[rel]
+                    manifest["performance"]["issues"].append("%s: re-encoding failed (%s); copied unchanged" % (rel, error))
+                else:
+                    source = target
+            else:
+                progress(done, len(todo), rel, "")
+            if not packable(rel):
+                put(source, rel, lambda fraction, done=done, rel=rel: progress(done + fraction, len(todo), rel, ""))
+                continue
+            if rpa and rpa.index and rpa.f.tell() + os.path.getsize(source) > PACKED_MAX:
+                finish(done)
+                rpa = None
+            if rpa is None:
+                count += 1
+                rpa = Rpa(os.path.join(workdir, "packed.rpa"))
+            rpa.add(unicodedata.normalize("NFC", rel), source)   # as a script spells it; macOS may hand back NFD
+        if rpa:
+            finish(len(todo))
+    except BaseException:
+        if rpa:
+            rpa.f.close()   # workdir is removed by the caller, also on Windows
+        raise
+    progress(len(todo), len(todo), "", "")
 
 
 def export(manifest, gamedir, files, out, replace, extra=None, progress=None):
     """Writes games/<id>/game and manifest.json. Refuses to overwrite unless replace;
     keeps game/saves (Ren'Py writes saves there too) and never touches saves/<id>.
     progress(done, total, rel, note) is called before each file, note being "re-encoding
-    1/2" or ""; if it raises, the staged copy is removed and the old export stays as it was."""
+    1/2" or ""; if it raises, the staged copy is removed and the old export stays as it was.
+    Over FTP it is also called during an upload, with done + the fraction sent."""
     if manifest["status"] == "unsupported":
         raise Refused("not exported: no runtime can run this game")
     progress = progress or (lambda *a: None)
+    if is_ftp(out):
+        return ftp_export(manifest, gamedir, files, out, replace, extra, progress)
     games = games_dir(out)
     dest = os.path.join(games, manifest["id"])
     if os.path.lexists(dest) and not replace:
@@ -1009,29 +1407,15 @@ def export(manifest, gamedir, files, out, replace, extra=None, progress=None):
     stage = tempfile.mkdtemp(prefix=".rsl-import-", dir=games)   # same volume: renames are atomic
     try:
         new = os.path.join(stage, "game")
-        convert = manifest["performance"]["converted"]
-        extra = extra or {}
-        todo = list(dict.fromkeys([r for r, _ in files] + sorted(extra)))   # decompiled .rpy are in both
-        recode = [r for r in todo if r in convert]
-        for done, rel in enumerate(todo):
-            source = extra.get(rel) or os.path.join(gamedir, *rel.split("/"))
+
+        def put(source, rel, tick):
             target = os.path.join(new, *rel.split("/"))
             os.makedirs(os.path.dirname(target), exist_ok=True)
-            if rel in convert:
-                progress(done, len(todo), rel, "re-encoding %d/%d" % (recode.index(rel) + 1, len(recode)))
-                error = reencode(source, target, convert[rel])
-                if error:
-                    del convert[rel]
-                    manifest["performance"]["issues"].append("%s: re-encoding failed (%s); copied unchanged" % (rel, error))
-                    shutil.copyfile(source, target)
-            else:
-                progress(done, len(todo), rel, "")
-                shutil.copyfile(source, target)
-        progress(len(todo), len(todo), "", "")
+            shutil.copyfile(source, target)
+        copy_files(manifest, gamedir, files, extra, progress, put, stage)
         os.makedirs(new, exist_ok=True)
         with open(os.path.join(stage, "manifest.json"), "w", encoding="utf-8") as f:
-            json.dump(manifest, f, indent=2, ensure_ascii=False)
-            f.write("\n")
+            f.write(manifest_json(manifest))
         os.makedirs(dest, exist_ok=True)
         old = os.path.join(dest, "game")
         if os.path.isdir(os.path.join(old, "saves")):
@@ -1043,6 +1427,51 @@ def export(manifest, gamedir, files, out, replace, extra=None, progress=None):
     finally:
         rmtree(stage)
     return dest
+
+
+def ftp_export(manifest, gamedir, files, out, replace, extra, progress):
+    """export() to the Switch: uploads into games/.uploading-<id>, then renames it into
+    place. The previous version waits in games/.old-<id> until its game/saves is moved over."""
+    gid = manifest["id"]
+    dest, stage, old = "games/" + gid, "games/.uploading-" + gid, "games/.old-" + gid
+    with contextlib.closing(Ftp(out)) as ftp:
+        have = ftp.entries("games")
+        if gid in have and not replace:
+            raise Refused("%s/%s already exists; replace it to update its game/ and manifest.json "
+                          "(saves are kept)" % (games_dir(out), gid))
+        if ".old-" + gid in have:
+            raise Refused("%s/.old-%s is left from an update that stopped half way and may hold saves "
+                          "(game/saves); move what you need out of it, delete it, then try again"
+                          % (games_dir(out), gid))
+        if ".uploading-" + gid in have:
+            ftp.rmtree(stage)   # a cancelled or failed upload; it never holds saves
+        try:
+            work = tempfile.mkdtemp(prefix="rsl-import-")
+            try:
+                copy_files(manifest, gamedir, files, extra, progress,
+                           lambda source, rel, tick: ftp.put(source, stage + "/game/" + rel, tick), work)
+            finally:
+                rmtree(work)
+            ftp.mkdirs(stage + "/game")
+            ftp.write(stage + "/manifest.json", manifest_json(manifest).encode("utf-8"))
+        except BaseException:
+            ftp.close()   # it may be mid-transfer: clean up over a new connection
+            with contextlib.suppress(*ERRORS), contextlib.closing(Ftp(out)) as again:
+                again.rmtree(stage)
+            raise
+        try:
+            if gid in have:
+                ftp.rename(dest, old)
+            ftp.rename(stage, dest)
+            if gid in have:
+                if "saves" in ftp.entries(old + "/game"):
+                    ftp.rename(old + "/game/saves", dest + "/game/saves")
+                ftp.rmtree(old)
+        except ftplib.all_errors as e:
+            raise Refused("the upload is complete, but moving it into place stopped (%s). In %s, "
+                          ".uploading-%s is the new copy and .old-%s the previous one with its game/saves"
+                          % (e, games_dir(out), gid, gid))
+    return games_dir(out) + "/" + gid
 
 
 def report(m):
@@ -1071,7 +1500,8 @@ def report(m):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Analyse a Ren'Py game and export it for the Switch loader.")
     ap.add_argument("source", help="game folder, .zip, .7z or .rar")
-    ap.add_argument("--out", help="export root, e.g. the SD card; writes switch/renpy-loader/games/<id>")
+    ap.add_argument("--out", help="export root, e.g. the SD card, or ftp://HOST:PORT for the Switch over "
+                                  "sphaira's FTP server; writes switch/renpy-loader/games/<id>")
     ap.add_argument("--id", help="game id (folder name); default from the title")
     ap.add_argument("--replace", action="store_true", help="update an existing export (saves are kept)")
     ap.add_argument("--optimize", action="store_true",
@@ -1079,21 +1509,24 @@ def main(argv=None):
     ap.add_argument("--recompile", action="store_true",
                     help="Python 2 game with .rpy sources: export without .rpyc for Ren'Py 8 to recompile")
     ap.add_argument("--decompile", action="store_true",
-                    help="with --recompile: rebuild .rpy for .rpyc that have none, with rpycdec "
-                         "(pip install rpycdec), run as a separate process")
+                    help="--recompile, and first rebuild .rpy for .rpyc that have none, with the "
+                         "--decompiler, run as a separate process")
+    ap.add_argument("--decompiler", choices=DECOMPILERS,
+                    help="with --decompile: unrpyc (default; third_party/unrpyc/fetch.sh) or rpycdec "
+                         "(pip install rpycdec, Python 3.10+); docs/IMPORTER.md compares them")
     ap.add_argument("--rpycdec-python", metavar="PYTHON",
                     help="Python 3.10+ interpreter that has rpycdec installed; default: rpycdec on PATH")
     ap.add_argument("--tools", metavar="DIR", help="folder with ffmpeg/ffprobe or 7z, if they are not on PATH")
     a = ap.parse_args(argv)
     if a.id is not None and make_id(a.id) != a.id:
         ap.error("--id must be lowercase a-z, 0-9 and '-', at most %d chars (try %r)" % (ID_MAX, make_id(a.id)))
-    if a.decompile and not a.recompile:
-        ap.error("--decompile only works with --recompile")
-    if a.rpycdec_python and not a.decompile:
-        ap.error("--rpycdec-python needs --decompile")
     for stream in (sys.stdout, sys.stderr):   # a Windows code page cannot encode every title
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
+    if a.decompiler and not a.decompile:
+        ap.error("--decompiler needs --decompile")
+    if a.rpycdec_python and a.decompiler != "rpycdec":
+        ap.error("--rpycdec-python needs --decompile --decompiler rpycdec")
     if a.tools:
         TOOL_DIRS[:] = [a.tools]
 
@@ -1103,13 +1536,14 @@ def main(argv=None):
 
     tmp = tempfile.mkdtemp(prefix="rsl-import-")
     try:
-        manifest, gamedir, files, extra = load(a.source, tmp, a.id, a.recompile, a.optimize, a.decompile,
+        decompile = (a.decompiler or DECOMPILERS[0]) if a.decompile else None
+        manifest, gamedir, files, extra = load(a.source, tmp, a.id, a.recompile, a.optimize, decompile,
                                                a.rpycdec_python)
         print(report(manifest), flush=True)
         if a.out:
             print("Exported to %s" % export(manifest, gamedir, files, a.out, a.replace, extra, show))
         return 0
-    except (Refused, OSError) as e:
+    except ERRORS as e:
         print("error: %s" % e, file=sys.stderr)
         return 1
     finally:

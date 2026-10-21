@@ -9,10 +9,11 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [here, os.path.join(here, "..", "..", "importer")]
-from test_importer import make_game, write  # noqa: E402
+from test_importer import FakeFTP, make_game, write  # noqa: E402
 import rsl_import_gui as gui  # noqa: E402
 
 
@@ -60,6 +61,13 @@ class ApiTest(unittest.TestCase):
         self.assertIn("recompile", r["manifest"]["suggested_options"])   # the page shows it as an alert
         self.assertIn("Suggested: --recompile", r["report"])
         self.assertIn("no runtime can run this game", self.api.export(self.sd)["error"])
+        os.remove(os.path.join(self.tmp, "OldGame", "game", "script.rpy"))   # sourceless: suggest Decompile
+        r = self.api.analyze(os.path.join(self.tmp, "OldGame"))
+        self.assertEqual(list(r["manifest"]["suggested_options"]), ["decompile"])
+        with mock.patch.object(gui.imp, "UNRPYC", os.path.join(self.tmp, "none.py")):
+            self.assertIn("unrpyc not found", self.api.analyze(os.path.join(self.tmp, "OldGame"),
+                                                               decompile="unrpyc")["error"])
+            self.assertFalse(self.api.tools()["unrpyc"])
 
     def test_cancel_leaves_sd_unchanged(self):
         self.api._window = FakeWindow(on_js=self.api.cancel)   # Cancel pressed during the first file
@@ -79,16 +87,45 @@ class ApiTest(unittest.TestCase):
         self.assertIn('"title": "Old"', games["old"]["report"], "a manifest report() cannot read is shown raw")
         self.assertEqual(self.api.library(os.path.join(self.tmp, "empty"))["games"], [])
 
+    def test_switch_over_ftp_and_delete(self):
+        url = "ftp://192.168.1.20:5000"
+        os.makedirs(self.sd)   # the FTP server's /
+        self.api._window = FakeWindow()
+        self.api.analyze(make_game(os.path.join(self.tmp, "FakeQuest")))
+        with mock.patch.object(gui.imp.ftplib, "FTP", lambda: FakeFTP(self.sd)):
+            self.assertEqual(self.api.export(url)["dest"], url + "/switch/renpy-loader/games/fake-quest")
+            self.assertTrue(os.path.isfile(os.path.join(self.games, "fake-quest", "manifest.json")))
+            lib = self.api.library(url)
+            self.assertEqual(lib["root"], url + "/switch/renpy-loader/games")
+            self.assertEqual([g["id"] for g in lib["games"]], ["fake-quest"])
+            self.assertEqual(self.api.delete(url, "fake-quest"), {})
+            self.assertIn("is not there", self.api.delete(url, "fake-quest")["error"])
+        with mock.patch.object(gui.imp.ftplib, "FTP", lambda: FakeFTP(self.sd, refuse=True)):
+            self.assertIn("cannot reach the Switch", self.api.library(url)["error"])
+            self.assertIn("cannot reach the Switch", self.api.export(url)["error"])
+
+    def test_compare(self):
+        col = os.path.join(self.tmp, "collection")
+        make_game(os.path.join(col, "FakeQuest"))
+        self.assertEqual(self.api.compare(col, None), {"error": "Choose a target first."})
+        self.api._window = FakeWindow()
+        rows = self.api.compare(col, self.sd)["rows"]
+        self.assertEqual([(r["state"], r["id"]) for r in rows], [("missing", "fake-quest")])
+        self.assertEqual(self.api._window.js[-1], 'compareProgress(...[1, 1, ""])')
+        self.api._window = FakeWindow(on_js=self.api.cancel)
+        self.assertEqual(self.api.compare(col, self.sd), {"error": "Comparison cancelled."})
+
     def test_page_calls_only_what_exists(self):
         with open(gui.PAGE, encoding="utf-8") as f:
             page = f.read()
         called = set(re.findall(r'call\("(\w+)"', page))
         self.assertEqual(called - {n for n in dir(gui.Api) if not n.startswith("_")}, set())
-        self.assertGreaterEqual(called, {"analyze", "export", "library", "pick", "cancel"})
-        for option in ("optimize", "recompile"):   # alerts for rsl_import's suggested_options
+        self.assertGreaterEqual(called, {"analyze", "export", "library", "pick", "cancel", "delete", "compare"})
+        for option in ("optimize", "recompile", "decompile"):   # alerts for rsl_import's suggested_options
             self.assertIn('id="hint-%s"' % option, page)
             self.assertIn('id="%s"' % option, page)
-        for function in ("progress", "dropped"):   # what Python calls on the page
+        self.assertEqual(set(re.findall(r'name="decompiler" value="(\w+)"', page)), set(gui.imp.DECOMPILERS))
+        for function in ("progress", "dropped", "compareProgress"):   # what Python calls on the page
             self.assertIn("window.%s = " % function, page)
 
 

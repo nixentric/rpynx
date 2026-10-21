@@ -1,5 +1,6 @@
 build-switch/
 build-host/
+build-lvgl/
 dist/
 __pycache__/
 *.pyc
@@ -12,3 +13,4 @@ build-test/
 core
 core.*
 graphify-out/
+build-*/

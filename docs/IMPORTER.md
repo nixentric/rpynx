@@ -13,8 +13,8 @@ People without Python can use the built app, `RSL Importer.exe` or `RSL Importer
 
 The importer never runs game code and never unpickles anything. It never changes the source
 folder or archive. It does not decrypt or unpack `.rpa` archives. The optional `--decompile`
-passes copies of `.rpyc` files to an external tool, rpycdec, which runs in its own process
-(see "Decompile").
+passes copies of `.rpyc` files to an external decompiler, unrpyc or rpycdec, which runs in
+its own process (see "Decompile").
 
 ## Usage
 
@@ -22,6 +22,7 @@ passes copies of `.rpyc` files to an external tool, rpycdec, which runs in its o
 python3 importer/rsl_import.py SOURCE                    # report only
 python3 importer/rsl_import.py SOURCE --out /Volumes/SD  # report + export (macOS)
 py importer\rsl_import.py SOURCE --out E:\               # report + export (Windows)
+python3 importer/rsl_import.py SOURCE --out ftp://192.168.1.20:5000   # report + upload to the Switch
 ```
 
 `SOURCE` can be:
@@ -30,14 +31,15 @@ py importer\rsl_import.py SOURCE --out E:\               # report + export (Wind
 
 | Option | Meaning |
 |---|---|
-| `--out DIR` | Export to `DIR/switch/renpy-loader/games/<id>/` (`game/` + `manifest.json`). |
+| `--out DIR` | Export to `DIR/switch/renpy-loader/games/<id>/` (`game/` + `manifest.json`). `ftp://HOST:PORT` uploads to the Switch instead (see "Switch over FTP"). |
 | `--id ID` | Choose the folder name yourself. It must already be in normalised form (see below). |
 | `--replace` | Update an existing export. Without it, the importer refuses if `games/<id>` exists. |
 | `--optimize` | Re-encode videos above 30 fps at 30 fps, at the same size and constant quality. Needs FFmpeg. See "Switch performance". |
 | `--recompile` | Ren'Py 7 / Python 2 games only. Exports without `.rpyc`, so Ren'Py 8.5.3 compiles the `.rpy` sources with Python 3 (see below). |
-| `--decompile` | With `--recompile`: rebuilds a `.rpy` for each `.rpyc` that has none, using rpycdec (see "Decompile"). |
+| `--decompile` | Rebuilds a `.rpy` for each `.rpyc` that has none, then recompiles (implies `--recompile`). See "Decompile". |
+| `--decompiler TOOL` | With `--decompile`: `unrpyc` (default) or `rpycdec`. "Decompile" compares them. |
 | `--tools DIR` | A folder holding `ffmpeg`/`ffprobe` or `7z`, searched before `PATH` (see "Tools"). |
-| `--rpycdec-python PYTHON` | With `--decompile`: a Python 3.10+ interpreter that has rpycdec installed. Default: the `rpycdec` command on `PATH`. |
+| `--rpycdec-python PYTHON` | With `--decompiler rpycdec`: a Python 3.10+ interpreter that has rpycdec installed. Default: the `rpycdec` command on `PATH`. |
 
 Exit status: `0` OK; `1` refused (unsafe archive, not a Ren'Py game, unsupported game,
 or the export already exists); `2` bad arguments.
@@ -73,8 +75,10 @@ python3 importer/rsl_import_gui.py
 On Windows: `py -m pip install pywebview`, then `py importer\rsl_import_gui.py`. Or use the
 built app, which needs no Python at all (see "Building the app").
 
-- **Library** lists the games already on the SD card (`switch/renpy-loader/games/<id>/`),
-  read from each `manifest.json`. Click a card for its report. The status chip is:
+- **Library** lists the games already on the target (`switch/renpy-loader/games/<id>/`),
+  read from each `manifest.json`. Click a card for its report and *Delete…* (see "Deleting a
+  game"). *Compare with folder…* checks a folder of games on the PC against it (see
+  "Comparing with a folder of games"). The status chip is:
   - *Experimental*: no warnings and no Switch performance issues;
   - *Review*: experimental, with warnings or performance issues to read first;
   - *Unsupported*: the manifest's `reasons` say why;
@@ -84,24 +88,31 @@ built app, which needs no Python at all (see "Building the app").
 - **Import**:
   1. Drop a game folder, `.zip`, `.7z` or `.rar` on the window, or use *Choose folder…* /
      *Choose archive…*. It is analyzed at once.
-  2. Options: *Optimize* is `--optimize`, *Recompile* is `--recompile`, *Game id* is `--id`
-     (blank: made from the title). Changing one clears the report; press *Analyze* again.
-     When the analysis finds something an option fixes (videos above 30 fps; a Ren'Py 7 game
-     with its `.rpy` sources), an alert under that option says why, and its *Turn on* button
-     ticks the option and analyzes again. The importer decides this (`suggested_options`).
-  3. *Tools* shows whether 7-Zip, `ffprobe` and `ffmpeg` were found. *Tools folder…* is
-     `--tools`.
+  2. Options: *Optimize* is `--optimize`, *Recompile* is `--recompile`, *Decompile* is
+     `--decompile` with the decompiler chosen under it (`--decompiler`; each shows its pros
+     and cons), *Game id* is `--id` (blank: made from the title). Changing one clears the
+     report; press *Analyze* again. When the analysis finds something an option fixes (videos
+     above 30 fps; a Ren'Py 7 game with its `.rpy` sources; one with scripts that were never
+     decompiled), an alert under that option says why, and its *Turn on* button ticks the
+     option and analyzes again. The importer decides this (`suggested_options`).
+  3. *Tools* shows whether 7-Zip, `ffprobe`, `ffmpeg`, unrpyc and rpycdec were found.
+     *Tools folder…* is `--tools`.
   4. The report is the command line's: status, Ren'Py version, warnings, Switch
      performance issues, and the `Checked:` line (loose, archived and locked assets).
   5. *Replace* is `--replace`. *Export* copies file by file with a progress bar. Re-encoding a
      video can take minutes, and the status line says so. *Cancel* stops after the current
      file: the half-made copy is removed, and an existing export stays as it was. Closing the
      window during an export does the same before the program quits.
-- **SD card**: choose its top folder, `E:\` on Windows or `/Volumes/<name>` on macOS. A
-  mounted drive that already has a `switch/` folder is offered, and chosen if it is the
-  only one.
+- **Target**, where the library is read from and games go:
+  - *SD card*: choose its top folder, `E:\` on Windows or `/Volumes/<name>` on macOS. A
+    mounted drive that already has a `switch/` folder is offered, and chosen if it is the
+    only one.
+  - *Switch over Wi-Fi (FTP)*: type the address sphaira shows, for example
+    `192.168.1.20:5000`, and press *Connect*. The library is read from the Switch, and
+    *Export* uploads to it, with the same progress bar (the status line also shows how much
+    of a large file is sent) and *Cancel*, which stops within the current file.
 
-Export is disabled for `unsupported` games. `--decompile` is only on the command line.
+Export is disabled for `unsupported` games. `--rpycdec-python` is only on the command line.
 
 Text from a game (title, report, paths) is put on the page as plain text, never as HTML: a
 title in `options.rpy` cannot inject script into a page that can export.
@@ -126,7 +137,7 @@ What differs on Windows:
 - Archive entries that Windows cannot create under their own name are refused: device names
   (`CON`, `NUL.txt`, `COM1`, …), `:` (it would write an alternate data stream), `<>"|?*`, and
   names that end in a dot or a space (Windows strips those, so `.. ` would become `..`).
-- 7-Zip, FFmpeg and rpycdec run without a console window popping up.
+- 7-Zip, FFmpeg, unrpyc and rpycdec run without a console window popping up.
 - 7-Zip lists names in UTF-8 (`-sccUTF-8`), not in the console code page.
 - Read-only files from an archive are deleted with the temp folder.
 - Report text the console code page cannot show (a Japanese title in a redirected
@@ -188,6 +199,70 @@ How `--replace` works:
   there as well as to `saves/<id>`.
 - `switch/renpy-loader/saves/` is never touched.
 
+## Switch over FTP
+
+The window's *Switch over Wi-Fi* target and `--out ftp://HOST:PORT` use sphaira's FTP
+server on the Switch (anonymous; port 5000 unless you give another). Turn it on in sphaira
+first. It stops while the loader or a game runs, and its address comes from the router, so
+it can change. `/` on that server is the SD card. Only Python's `ftplib` is used.
+
+How an upload works:
+1. If `games/<id>` exists and *Replace* (`--replace`) is off, nothing is sent.
+2. Every file goes to the hidden folder `games/.uploading-<id>/`; `manifest.json` last. The
+   loader skips names that start with a dot. A `.uploading-<id>` left by an earlier upload
+   is removed first: it never holds saves.
+3. On *Cancel*, a lost connection or any error, `.uploading-<id>` is removed over a new
+   connection, and the Switch is as it was. If that fails too, the next upload removes it.
+4. Then it is renamed into place: the old `games/<id>` becomes `games/.old-<id>`,
+   `.uploading-<id>` becomes `games/<id>`, the old `game/saves/` is moved into the new
+   `game/`, and `.old-<id>` is deleted.
+5. If a rename in step 4 fails, the error names both folders. A `.old-<id>` left over may
+   hold saves, so the next upload of that game refuses until it is moved or deleted by hand.
+
+`switch/renpy-loader/saves/` is never touched. Unlike an SD card export, which only swaps
+`game/` and `manifest.json`, an upload replaces the whole `games/<id>/` folder.
+
+Uploads of thousands of small files run at about 1–2 MB/s (one file at a time).
+
+## Deleting a game
+
+*Delete…* on a game in the Library asks first, then removes `games/<id>/`, from the SD card
+or over FTP. Its saves stay in `switch/renpy-loader/saves/<id>/` unless *Also delete its
+saves* is ticked. The copy in `games/<id>/game/saves/` goes with the game: Ren'Py writes
+every save to all of its save folders (`MultiLocation.save` in `renpy/savelocation.py`), so
+`saves/<id>/` holds the same saves. Logs in `switch/renpy-loader/logs/<id>/` are kept.
+There is no command-line option for it.
+
+## Comparing with a folder of games
+
+*Compare with folder…* in the Library takes a folder of game sources on the PC: game folders
+and `.zip`, `.7z` or `.rar` files directly inside it (other files are ignored). It compares
+each one with the library on the target (SD card or FTP) and changes nothing on either side.
+
+| State | Meaning |
+|---|---|
+| *Different* | The library copy no longer matches the source. Details say why: file count, total size, or which `.rpa`/`.rpyc` files differ. |
+| *Not on the Switch* | No game in the library matches it. The row shows the id an import would give it. |
+| *Only on the Switch* | A game in the library that no source in the folder matches. |
+| *Can't compare* | A match without a usable `manifest.json` (copied by hand, or an edited manifest). |
+| *Not a game* | The importer cannot read it as a Ren'Py game; the reason is shown. |
+| *Same* | Matches what the manifest recorded from its source. |
+
+How a source is matched and checked:
+- It is matched to the export whose `manifest.json` names the same source (`source.name`, the
+  folder or archive name). Otherwise, to the export with the id an import would give it, from
+  `config.name` or the folder name. A match by id says which source the library copy came
+  from, for example an older `Game-1.0.zip` next to `Game-1.1.zip`. A game exported with its
+  own `--id` and then renamed matches neither way.
+- The same rules as an import pick the game folder and its files. A `--recompile` export is
+  compared without `.rpyc` files; for a `--decompile` export the total size is skipped,
+  because the decompiler wrote some of the exported files.
+- The file count and total size are compared first. If both match, every `.rpa` and `.rpyc`
+  is hashed (SHA-256) and compared with the manifest's `sha256`. A change in other files
+  (images, audio, `.rpy`) that keeps the file count and total size is not found.
+- Archives are unpacked into a temporary folder, one at a time, as an import does. A folder of
+  large archives takes minutes. *Cancel* stops after the current game.
+
 ## Game id and title
 
 - **Title:** `config.name` from `game/options.rpy`. If that is missing, the folder name (or
@@ -216,7 +291,7 @@ with the same id, use `--id` for the second one.
 | Native code | `*.pyd`, `*.dll`, `*.so`, `*.dylib` in `game/` | Warning: cannot load on the Switch |
 | Archive format | `.rpa` header is `RPA-3.0` or `RPA-2.0` | Other header → warning: a custom format that needs the game's own loader |
 | Media | Counts audio and video files by extension. The runtime's FFmpeg decodes practically every format (WebM/VP9, MP4/H.264, HEVC, AV1, AVI, WMV, MPEG and others); only MIDI is refused, because Ren'Py cannot play it. | Warning for `.mid`. Files ≥ 2 GiB → warning (FAT32 cannot hold files ≥ 4 GiB). Decoding cost: see "Switch performance" |
-| Non-ASCII names | Any exported path with non-ASCII characters | Warning: creating such names on `sdmc:` failed in hardware run 4 |
+| Non-ASCII names | Any exported path with non-ASCII characters | The Switch SD parses names as Shift-JIS and lists none of them (hardware run 20). So the export packs these files into `game/rsl-nonascii.rpa` (a new archive every 2 GiB: `rsl-nonascii-2.rpa`, …), with names in NFC, and Ren'Py reads them from there. Scripts (`.rpy`, `.rpym`, `_ren.py`) and `.rpa` files stay loose, because Ren'Py loads none of them from an archive: warning |
 
 ## Status
 
@@ -258,7 +333,8 @@ It does not export `unsupported` games, because no runtime could start them.
 - `suggested_options` names the importer options that would fix something found, each with
   why. `optimize`: videos above 30 fps that `--optimize` can re-encode (not alpha, a codec it
   has an encoder for). `recompile`: a Python 2 game whose every `.rpy` source is there and
-  that has no `.rpa` (what `--recompile` needs). It is empty once the option is on. The
+  that has no `.rpa` (what `--recompile` needs). `decompile`: a Python 2 game without `.rpa`
+  whose compiled scripts have no `.rpy` source. It is empty once the option is on. The
   report prints it as `Suggested: --optimize: …`, and the window shows it as an alert under
   that option.
 - `decompiled` lists the `.rpy` files that `--decompile` rebuilt (paths relative to `game/`).
@@ -324,7 +400,7 @@ The importer refuses recompile mode when:
 - the game is not Python 2;
 - it has `.rpa` archives, which may hold compiled scripts;
 - a `.rpyc` outside `tl/` has no `.rpy` source, unless `--decompile` is given. The refusal
-  says how to install rpycdec.
+  says to add it.
 
 Without `--decompile`, sourceless `.rpyc` under `tl/` are left out with a warning: those
 translations may be missing.
@@ -332,39 +408,56 @@ translations may be missing.
 ### Decompile (`--decompile`)
 
 For Ren'Py 7 games that ship only `.rpyc` (some or all scripts have no `.rpy`).
-`--recompile --decompile` rebuilds a `.rpy` for every `.rpyc`/`.rpymc` that has no source,
-including those under `tl/`. It uses [rpycdec](https://github.com/cnfatal/rpycdec) (MIT).
-Install it yourself:
+`--decompile` rebuilds a `.rpy` for every `.rpyc`/`.rpymc` that has no source, including
+those under `tl/`, and then exports as `--recompile` does (it implies `--recompile`). The
+analysis suggests it (`suggested_options`) when a Python 2 game without `.rpa` has
+compiled scripts that were never decompiled. Two decompilers can do it; `--decompiler`
+picks one, and the window offers both under *Decompile*:
+
+| | unrpyc (default) | rpycdec |
+|---|---|---|
+| Project | [CensoredUsername/unrpyc](https://github.com/CensoredUsername/unrpyc) v2.0.4, MIT. The long-standing Ren'Py decompiler (since 2012). | [cnfatal/rpycdec](https://github.com/cnfatal/rpycdec), MIT. Younger and smaller. |
+| Install | Not on pip: `third_party/unrpyc/fetch.sh` (pinned, checksummed) puts it in `build-unrpyc/unrpyc/`. | `pip install rpycdec`. |
+| Python | The importer's own, 3.9+ (`/usr/bin/python3` on macOS works). | 3.10+, so not `/usr/bin/python3`; give it with `--rpycdec-python PYTHON` (command line only) or put `rpycdec` on `PATH`. |
+| Ren'Py | Made for Ren'Py 8; reads 7, and 6 from 6.18. Older games are refused. | Ren'Py 7 and 8, tested on 7.6.3, 8.2.3, 8.4.1 and 8.5.3 by recompiling its output and comparing. |
+| A script it cannot read | It names the script and decompiles the rest. | It stops there: the rest are not decompiled, and the import is refused. |
+| A statement it cannot read | Left as `pass # <<<COULD NOT DECOMPILE: …>>>`. | Left as `# <unrecognized: …>`. |
+| Side effects | None outside its folder. | Its package adds stand-in `renpy` and `store` modules to the Python it is installed in. |
+| Packaged app | Cannot run it (it needs a Python); run `importer/rsl_import_gui.py`. | Runs if `rpycdec` is on `PATH` or in the *Tools folder…*. |
+
+So: unrpyc first. If it cannot read a script, try rpycdec, and the other way round.
 
 ```bash
-pip install rpycdec
+sh third_party/unrpyc/fetch.sh            # once, for unrpyc
+python3 importer/rsl_import.py OldGame --decompile --out /Volumes/SD
+python3 importer/rsl_import.py OldGame --decompile --decompiler rpycdec --rpycdec-python ~/py312/bin/python
 ```
 
-rpycdec needs Python 3.10+, so it does not run on `/usr/bin/python3`. The importer finds the
-`rpycdec` command on `PATH`, or runs `PYTHON -m rpycdec` when given `--rpycdec-python PYTHON`.
-
-```bash
-python3 importer/rsl_import.py OldGame --recompile --decompile --out /Volumes/SD
-```
+On Windows without `sh`, unpack the v2.0.4 source zip from unrpyc's releases page into
+`build-unrpyc\unrpyc\` so that `build-unrpyc\unrpyc\unrpyc.py` exists.
 
 How it is kept apart from the importer:
-- rpycdec unpickles the `.rpyc` files with a restricted unpickler, and its README warns that
-  no safeguard is perfect. So it never runs inside the importer. The importer copies only the
-  sourceless `.rpyc` into its temp folder and runs `rpycdec decompile` on that folder as a
-  separate process (stdin closed, `RPYCDEC_TIMEOUT` = 600 s). The working directory holds only
-  the copies.
+- Both unpickle the `.rpyc` files with restricted unpicklers, and rpycdec's README warns that
+  no safeguard is perfect. So neither runs inside the importer. The importer copies only the
+  sourceless `.rpyc` into its temp folder and runs the decompiler on that folder as a
+  separate process (stdin closed, `DECOMPILE_TIMEOUT` = 600 s). The working directory holds
+  only the copies.
+- unrpyc runs with `--no-init-offset`: its guess at `init offset` statements is only safe for
+  Ren'Py 8, and without it the output is the same game, only more verbose.
 - The source game is never touched. The rebuilt `.rpy` are exported, and every `.rpyc` is
   still left out.
 - `.rpyc` that have a `.rpy` source are not decompiled.
-- If rpycdec fails on any file, or does not finish in time, the import is refused.
+- A script the decompiler cannot read is named. Outside `tl/` the import is refused (the game
+  needs it); under `tl/` it is left out with a warning (that translation may be missing).
+  The import is also refused if the decompiler does not finish in time.
 - Only scripts are decompiled. Archives are not touched: recompile mode still refuses any game
-  with `.rpa` archives. There is no decryption, and rpycdec's save tools (including save
-  re-signing) are not used.
+  with `.rpa` archives. There is no decryption, and no other tool of either project is used
+  (rpycdec's save re-signing, unrpyc's `--try-harder` deobfuscation).
 
 Decompiled scripts may differ from the originals. Comments and formatting are lost, and
-rpycdec can misread statements. The manifest lists the rebuilt files under `decompiled`, and a
-warning says the same. A second warning names files with statements rpycdec did not
-recognise; it leaves those as comments. Play the whole game to check.
+statements can be misread. The manifest lists the rebuilt files under `decompiled`, and a
+warning says the same and names the decompiler. A second warning names files with
+statements it could not read; it leaves those as comments. Play the whole game to check.
 
 It is an experiment, not support:
 - Python 2 code can behave differently under Python 3 **without any error**. For example,
@@ -405,7 +498,7 @@ The limits are constants at the top of `rsl_import.py`.
   only `.rpa` and no `renpy/` folder may have an unknown Python generation, which makes it
   `unsupported`.
 - `--recompile` needs `.rpy` sources. For Ren'Py 7 games that ship only loose `.rpyc`, add
-  `--decompile` (needs rpycdec). Scripts inside `.rpa` archives cannot be recompiled at all.
+  `--decompile` (needs unrpyc or rpycdec). Scripts inside `.rpa` archives cannot be recompiled at all.
 - The Python modules in `game/` are not scanned for imports of modules the Switch lacks.
 - The media check only looks at file extensions. The runtime's FFmpeg codec list is not
   confirmed on hardware.

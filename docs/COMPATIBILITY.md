@@ -18,7 +18,7 @@ No game has been tested. Rows are added only with a test record from `docs/HARDW
 
 | Game | Source | Ren'Py | Status | Tested on | Notes |
 |---|---|---|---|---|---|
-| The Question | bundled with the Ren'Py SDK | 8.5.3 | **Experimental** | Switch, handheld, application mode, 2026-10-18 (run 5): starts, renders on GPU, dialogue, menus, clean quit | Also launched from the importer's export (`games/the-question`, run 9). The loader then crashed after the return (SDL timer thread, see run 9). Audio, saves, suspend, touch not yet checked on hardware |
+| The Question | bundled with the Ren'Py SDK | 8.5.3 | **Experimental** | Switch, handheld, application mode, 2026-10-18 (run 5): starts, renders on GPU, dialogue, menus, clean quit | Also launched from the importer's export (`games/the-question`, run 9). The loader then crashed after the return (SDL timer thread, see run 9). Music plays without stutter (run 21). Saves, suspend, touch not yet checked on hardware |
 
 ## Loader features
 
