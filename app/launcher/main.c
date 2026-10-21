@@ -55,7 +55,7 @@ static struct {
     screen_id screen;
     int sel;
     bool quit;
-    char status[160];
+    char status[512];             /* the applet-mode refusal is ~260 chars; 160 cut "hold R" off (run 27) */
     rsl_input in;
     rsl_raw_input raw;
     PadState pad;
