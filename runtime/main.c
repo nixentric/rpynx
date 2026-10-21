@@ -23,6 +23,7 @@
 #include <string.h>
 #include <sys/iosupport.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <SDL2/SDL.h>
@@ -106,6 +107,26 @@ static PyObject *nx_applet_type(PyObject *self, PyObject *unused)
 
 /* -> ([(kind, action), ...], cursor_x, cursor_y, cursor_moved)
  * kind: 0 down, 1 up, 2 repeat, 3 emergency combo. Cursor is normalised. */
+/* One runtime.log line per press (not per repeat): the action and the physical button(s)
+ * that fired it, so a remap can be checked in a game from the log alone. */
+static void log_input_events(const rsl_input *in)
+{
+    for (int i = 0; i < in->event_count; i++) {
+        const rsl_event *e = &in->events[i];
+        if (e->type == RSL_EV_EMERGENCY) {
+            rsl_log("input: emergency combo, default controls restored");
+        } else if (e->type == RSL_EV_ACTION_DOWN) {
+            char names[96] = "";
+            size_t n = 0;
+            uint32_t mask = in->pressed_buttons & in->cfg.bindings[e->action];
+            for (int b = 0; b < RSL_BTN_COUNT && n < sizeof names; b++)
+                if (mask & (1u << b))
+                    n += snprintf(names + n, sizeof names - n, "%s%s", n ? "+" : "", rsl_button_names[b]);
+            rsl_log("input: %s (%s)", rsl_action_names[e->action], n ? names : "held");
+        }
+    }
+}
+
 static PyObject *nx_input_poll(PyObject *self, PyObject *unused)
 {
     uint32_t now = now_ms();
@@ -124,6 +145,7 @@ static PyObject *nx_input_poll(PyObject *self, PyObject *unused)
         rsl_input_reset(&g_in, raw.buttons);
     }
     rsl_input_update(&g_in, &raw, now, dt > 0.1f ? 0.1f : dt);
+    log_input_events(&g_in);
 
     PyObject *events = PyList_New(g_in.event_count);
     if (!events)
@@ -566,10 +588,26 @@ static void watch_python(struct job *j, const int *dump_at, int n_dumps, const c
     int next = 0, next_telemetry = 0;
     u64 last_idle[TELEMETRY_CORES] = { 0 }, last_tick[TELEMETRY_CORES] = { 0 };
     char line[80];
+    AppletFocusState focus = appletGetFocusState();
+    time_t wall = time(NULL);
     while (!j->done) {
         if (progress_file && !appletMainLoop())
             break;
         svcSleepThread(100000000ULL);
+        /* HOME and sleep, for hardware tests: the focus state is the one SDL's
+         * applet message handling keeps; the wall clock also runs while the
+         * console sleeps, when no thread here does. */
+        AppletFocusState f = appletGetFocusState();
+        if (f != focus) {
+            rsl_log("focus: %s", f == AppletFocusState_InFocus ? "back in the game" :
+                    f == AppletFocusState_OutOfFocus ? "out of focus (HOME menu or an overlay)" : "in the background");
+            focus = f;
+        }
+        time_t now_wall = time(NULL);
+        if (now_wall - wall > 5)
+            rsl_log("resumed: this thread did not run for %lld s (console asleep or suspended)",
+                    (long long)(now_wall - wall));
+        wall = now_wall;
         int secs = (int)(armTicksToNs(armGetSystemTick() - start) / 1000000000ULL);
         if (next < n_dumps && secs >= dump_at[next]) {
             next++;

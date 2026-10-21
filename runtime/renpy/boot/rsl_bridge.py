@@ -75,9 +75,44 @@ def _overlay():
     renpy.exports.notify("Loader overlay: not implemented yet (Milestone 6).")
 
 
+def _where():
+    """file:line of the game's current statement (below any menu context)."""
+    try:
+        node = renpy.game.script.lookup(renpy.game.contexts[0].current)
+        return "%s:%d" % (node.filename, node.linenumber)
+    except Exception as e:   # a diagnostic must never break a save or load
+        return "unknown (%r)" % e
+
+
+def _after_load():
+    print("rsl: loaded, now at %s" % _where(), flush=True)
+
+
+def _log_saves():
+    """Saves and loads go to python.txt with the script line, so a hardware test can
+    check from the log that a load returns to the line that was saved."""
+    loadsave = renpy.loadsave
+    if not getattr(loadsave.save, "_rsl", False):
+        save, load = loadsave.save, loadsave.load
+
+        def logged_save(slotname, *args, **kwargs):
+            print("rsl: save %s at %s" % (slotname, _where()), flush=True)
+            return save(slotname, *args, **kwargs)
+
+        def logged_load(filename):
+            print("rsl: load %s" % filename, flush=True)
+            return load(filename)
+        logged_save._rsl = True
+        loadsave.save = renpy.exports.save = logged_save   # renpy.save in game code is renpy.exports.save
+        loadsave.load = renpy.exports.load = logged_load
+    if _after_load not in renpy.config.after_load_callbacks:   # 00start.rpy resets the list at init
+        renpy.config.after_load_callbacks.append(_after_load)
+
+
 def _setup_display():
     """Runs from Interface.start(), once the game's config exists."""
     config = renpy.config
+    _log_saves()
     # Ren'Py also matches these names against ordinary key/mouse events, and
     # a name missing from config.keymap is parsed as a key specifier (error).
     for name in NAMED.values():
