@@ -71,9 +71,13 @@ PROGRAM_LIBDIRS	:=	$(PYDIST) $(RENPYDIST)
 else
 TARGET		:=	renpy-loader
 BUILD		:=	build/switch
-SOURCES		:=	app/launcher app/diagnostics platform/input platform/filesystem third_party/cjson
-INCLUDES	:=	app/diagnostics platform/input platform/filesystem third_party/cjson
+SOURCES		:=	app/launcher app/ui app/diagnostics platform/input platform/filesystem third_party/cjson
+INCLUDES	:=	app/launcher app/ui app/diagnostics platform/input platform/filesystem third_party/cjson \
+			third_party/lvgl build/lvgl/lvgl
 APP_TITLE	:=	Ren'Py Switch Loader
+# LVGL (docs/LOADER_UI.md), built as a library by the `lvgl` target below.
+PROGRAM_LIBS	:=	-llvgl
+PROGRAM_LIBDIRS	:=	$(CURDIR)/build/lvgl/switch
 endif
 
 #---------------------------------------------------------------------------------
@@ -190,7 +194,7 @@ ifneq ($(ROMFS),)
 	export NROFLAGS += --romfsdir=$(CURDIR)/$(ROMFS)
 endif
 
-.PHONY: $(BUILD) clean all python renpy runtime romfs test-python
+.PHONY: $(BUILD) clean all python renpy runtime romfs test-python lvgl
 
 #---------------------------------------------------------------------------------
 all: $(BUILD)
@@ -217,7 +221,15 @@ romfs:
 	@cp runtime/python/selftest.py $(ROMFS)/
 	@rm -f dist/$(TARGET).nro   # RomFS is not a make dependency: always repack
 
-$(BUILD): $(if $(ROMFS),romfs)
+# LVGL for the loader: fetched (pinned, checksummed) and built once into
+# build/lvgl/switch/lib/liblvgl.a, with LVGL's own flags (its code is not
+# held to this project's warning set).
+lvgl:
+	@third_party/lvgl/fetch.sh
+	@$(MAKE) --no-print-directory -f third_party/lvgl/Makefile OUT=build/lvgl/switch/lib \
+		CC="$(CC)" AR="$(AR)" CFLAGS="-g -O2 -ffunction-sections $(ARCH) -D__SWITCH__"
+
+$(BUILD): $(if $(ROMFS),romfs) $(if $(filter loader,$(PROGRAM)),lvgl)
 	@[ -d $@ ] || mkdir -p $@ dist
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 

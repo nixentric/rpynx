@@ -15,7 +15,7 @@ make -s -j8 -f third_party/lvgl/Makefile OUT=build/host/lvgl CC=cc AR=ar \
     CFLAGS="-O2 -g -Wno-unused-function"
 cc -std=gnu11 -g -O1 -Wall -Wextra -Werror -fsanitize=address,undefined \
     -Iapp/ui -Iapp/launcher -Iapp/diagnostics -Iplatform/input -Ithird_party/lvgl -Ibuild/lvgl/lvgl \
-    tests/ui/mockups.c app/ui/ui.c app/diagnostics/log.c platform/input/input.c \
+    tests/ui/mockups.c app/ui/ui*.c app/diagnostics/log.c platform/input/input.c \
     build/host/lvgl/liblvgl.a -lm -o "$out/mockups"
 
 sdk=build/renpy/renpy
@@ -45,8 +45,12 @@ if command -v magick >/dev/null && [ -f "$q/bg uni.jpg" ]; then
 fi
 
 rm -f "$out"/*.bmp "$out"/*.png
-"$out/mockups" "$font" "$out" "$PWD/$out/covers" >/dev/null
+# Also the redraw regression test: it fails if a settled screen keeps drawing.
+rc=0
+"$out/mockups" "$font" "$out" "$PWD/$out/covers" >/dev/null 2>"$out/mockups.err" || rc=1
+grep -v "jd_restart\|jd_mcu_load\|NULL display" "$out/mockups.err" >&2 || true
 for f in "$out"/*.bmp; do
     sips -s format png "$f" --out "${f%.bmp}.png" >/dev/null && rm "$f"
 done
 ls "$out"/*.png
+exit $rc

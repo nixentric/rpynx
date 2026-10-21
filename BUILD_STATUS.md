@@ -12,7 +12,7 @@ Last updated: 2026-10-21
 | 4 Ren'Py engine | Ren'Py 8.5.3 builds, links and runs on a Switch: The Question (run 5), and Forbidden Fantasy, a Ren'Py 7 game recompiled on the console (run 13). Quit returns to the loader (run 7); three games in a row run in one process (run 12). The controller bridge passes 26/26 desktop checks against the official engine. Music and sound play, also from an `.rpa` ([run 21](tests/hardware/results/2026-10-21-run21.md)). Saves, suspend and touch: see Milestone 6. Applet mode crashed the whole console (runs 8 and 26), so games are refused there (loader and runtime) |
 | 5 Importer | macOS importer: folder/ZIP/7z/RAR → compatibility report, `manifest.json`, SD export. Host-tested (25 tests). Its export of The Question launched on a Switch (run 9) |
 | 6 Gameplay reliability | **Done** (run 27). Verified on a Switch: quitting and starting another game no longer crashes (a stuck Ren'Py audio decode thread, runs 22–24); a game error shows the system error dialog and returns to the library (run 25); sleep and resume (runs 23–24); website links and folder buttons show a notice instead of failing (run 25); the D-pad reaches buttons whose boxes overlap (run 25); The Question's preferences with the SDK fonts (run 25). Desktop-tested only: game menus start on their side menu; no cursor after touch. Also verified (run 26): a remap used in a game (`input: confirm (X)`), save/load back to the same line (`script.rpy:72`), a custom screen to Done, HOME. The in-game emergency combo saves the defaults for the loader too, and games are refused in applet mode, the loader started from the Album, which crashed the whole console in runs 8 and 26 ([run 27](tests/hardware/results/2026-10-21-run27.md)). Still desktop-only: no cursor after touch; the full refusal text (status buffer fixed after run 27) |
-| 7 Game library | Phase 1 done: LVGL 9.6 mockups (`docs/LOADER_UI.md`, `scripts/mockups.sh`), portrait covers, Row (default) and Grid layouts, performance and logging requirements. Waiting for design approval; built after Milestone 6 |
+| 7 Game library | The LVGL loader ran on a Switch (first hardware test, 2026-10-22): first frame 80 ms after start, cores at 1 % when idle, SoC 36-38 °C, frames 11-17 ms. The user's review led to a second round (fonts measured so nothing is cut off, centred icons, bigger covers, a controller-shaped test screen, layout and accent pages, an illustrated How to play), built with 0 warnings (`.nro` 731 KB) and pushed for the second hardware test. Covers wait for the importer |
 | Transfer (planned: after 7, before 8) | Built-in FTP server in the loader (the desktop importer's FTP client exists already), then USB transfer (libnx `usbComms` on the Switch, libusb on the desktop; tens of MB/s against ~1–2 MB/s over Wi-Fi). MTP is not planned: macOS has no MTP support, and an MTP responder such as haze is GPL, which would make the MIT loader GPL |
 | 8 Release validation | Not started |
 
@@ -28,8 +28,14 @@ are still unverified on hardware. See
   on Apple Silicon.
 
 **Loader (`renpy-loader.nro`)**
-- Text-console UI: main menu, game folder listing, controller settings, controller test,
-  diagnostics (applet type, docked/handheld, memory, runtime presence, log tail).
+- Graphical UI with LVGL 9.6 (`app/ui/ui.c`, `docs/LOADER_UI.md`), drawn on the CPU into the
+  libnx framebuffer, only when something changed:
+  - library in three layouts (Row, Grid, Cinematic), game details, + menu, applet-mode notice,
+    controller settings, controller test, diagnostics, how to play (shown on the first start);
+  - OLED dark theme, pink or blue accent; the console's own font and button icons;
+  - settings in `config/loader.json`;
+  - `ui` lines in `loader.log`: start time, a summary every 60 s (frames, render time, core
+    load, SoC temperature, heap, covers), rate-limited warnings, an exit line.
 - Diagnostics → A chain-loads the runtime's Python self-test, which returns to the loader afterwards.
 - Game Library reads each game's `manifest.json`:
   - it shows the Ren'Py version, status, runtime, and whether that runtime is installed;
@@ -211,7 +217,7 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H35.
 
 ## Known bugs and limitations
 
-- Loader UI is a text console. The graphical library is Milestone 7.
+- The graphical loader has not run on a Switch yet (Milestone 7 hardware test pending).
 - The in-game loader overlay is not built; L-stick press only shows a notice.
 - Live2D and 3D models are unsupported.
 - Non-ASCII file names on the SD card (run 20): about half of Japanese names cannot be created,
@@ -247,9 +253,8 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H35.
 
 ## Next engineering tasks
 
-1. Milestone 7: approve the mockups, then build the LVGL library (`docs/LOADER_UI.md`,
-   "Next phase"). With it, a "How to play" guide (user request): a help screen in the loader
-   (controls, emergency combo, full-memory start) and a step-by-step guide in `docs/`, from
-   importing a game to playing it, with screenshots from the console.
+1. Milestone 7: hardware test of the LVGL loader (`docs/LOADER_UI.md`); then covers in the
+   importer (automatic from the menu art, custom cover in the desktop app), and the
+   step-by-step "how to play" guide in `docs/` with screenshots from the console.
 2. Transfer: the loader's own FTP server, then USB.
 3. Milestone 8: release validation.

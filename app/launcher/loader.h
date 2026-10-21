@@ -20,15 +20,19 @@
 #define RUNTIME_NRO ROOT "/runtimes/renpy-runtime.nro"
 #define MAX_GAMES   64
 
-typedef enum { SCR_LIBRARY, SCR_DETAIL, SCR_REMAP, SCR_TEST, SCR_DIAG, SCR_HELP } screen_id;
+typedef enum { SCR_LIBRARY, SCR_DETAIL, SCR_REMAP, SCR_TEST, SCR_DIAG, SCR_HELP, SCR_LAYOUT } screen_id;
 
 /* Rows of the controller settings screen: one per action, then these. */
 enum { ROW_DEADZONE = RSL_ACT_COUNT, ROW_SPEED, ROW_ACCEL, ROW_DELAY, ROW_INTERVAL,
        ROW_STICKS, ROW_CURSOR_VIS, ROW_COUNT };
 
-enum { MENU_REMAP, MENU_TEST, MENU_DIAG, MENU_LAYOUT, MENU_ACCENT, MENU_HELP, MENU_EXIT, MENU_COUNT };   /* + menu */
-enum { LAYOUT_ROW, LAYOUT_GRID, LAYOUT_CINEMA };   /* library layouts, see docs/LOADER_UI.md */
-enum { THEME_PINK, THEME_BLUE };    /* accent colour; nothing else changes */
+enum { MENU_REMAP, MENU_TEST, MENU_DIAG, MENU_LAYOUT, MENU_HELP, MENU_EXIT, MENU_COUNT };   /* + menu */
+enum { LAYOUT_ROW, LAYOUT_GRID, LAYOUT_CINEMA, LAYOUT_COUNT };   /* library layouts, docs/LOADER_UI.md */
+/* Layout page (+ menu): the library layouts, the background switch, the
+ * accent colour presets, then the custom hue row. */
+enum { ACCENT_PRESETS = 8 };
+enum { SET_BACKDROP = LAYOUT_COUNT, SET_PRESET, SET_CUSTOM = SET_PRESET + ACCENT_PRESETS, SET_COUNT };
+enum { HELP_COUNT = 5 };                                          /* how-to-play cards */
 enum { DETAIL_LAUNCH, DETAIL_CONTROLS, DETAIL_COUNT };              /* detail buttons */
 
 typedef enum { ST_INFO, ST_OK, ST_BAD } status_kind;
@@ -50,13 +54,15 @@ struct game_info {
 typedef struct {
     screen_id screen;
     int layout;                    /* LAYOUT_ROW / LAYOUT_GRID, saved in config/loader.json */
-    int accent;                    /* THEME_PINK / THEME_BLUE, saved there too */
+    uint32_t accent;               /* focus colour, 0xRRGGBB, saved there too */
+    int accent_hue;                /* the custom row's hue, 0-359 */
+    bool backdrops;                /* game art behind Cinematic and the details; saved there too */
     int sel;                       /* focused item on the current screen */
     int game;                      /* game of the detail page / per-game controls */
     bool menu_open;                /* the + menu, over the library */
     bool dialog_open;              /* applet-mode notice: games do not start in applet mode */
     int menu_sel;
-    char status[200];
+    char status[512];             /* the applet-mode refusal was ~260 chars (run 27) */
     status_kind status_kind;
     uint32_t now;
 

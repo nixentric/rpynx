@@ -23,12 +23,14 @@ the normaliser relies on is checked against libnx's own constants by `_Static_as
 
 | Path | Role |
 |---|---|
-| `app/launcher/main.c` | Loader UI (text console for now): library list, controller settings, controller test, diagnostics |
+| `app/launcher/` | The loader: `main.c` start-up, display, main loop, `ui` log lines; `actions.c` input and navigation; `library.c` game scan, manifests, settings, launching; `controls.c` remapping (`launcher.h`, `loader.h`) |
+| `app/ui/` | Loader screens, LVGL 9.6 on the libnx framebuffer (`docs/LOADER_UI.md`): `ui.c` building blocks and screen frame; `ui_library.c` library, covers, details; `ui_controls.c` controller settings, test, diagnostics; `ui_pages.c` how to play and the Layout page: layout, backgrounds, accent colour (`ui_internal.h`) |
 | `app/diagnostics/log.c` | Line-flushed log at `sdmc:/switch/renpy-loader/logs/loader.log` plus an in-memory tail |
 | `platform/input/` | Normaliser, mapping engine, JSON persistence, libnx glue |
 | `platform/filesystem/` | Atomic writes with `.bak` fallback, bounded reads, `mkdir -p` |
 | `config/profiles/` | Sample controller profiles (identical to the built-in presets, checked by tests) |
 | `third_party/cjson/` | cJSON 1.7.18, MIT, vendored unmodified |
+| `third_party/lvgl/` | LVGL 9.6.0 (MIT): pinned fetch script, `lv_conf.h`, library Makefile; the source goes to `build/lvgl/` |
 | `tests/unit/` | Host unit tests |
 | `scripts/` | `build.sh` (pinned container build), `test.sh` (host tests) |
 

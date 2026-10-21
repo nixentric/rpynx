@@ -1,8 +1,13 @@
 /* Renders every loader screen with sample data into BMP files, using the real
  * app/ui code and LVGL's software renderer on the host. scripts/mockups.sh
  * builds it, makes sample covers and converts the BMPs to PNG.
- *   mockups FONT.ttf OUT_DIR COVER_DIR */
+ *   mockups FONT.ttf OUT_DIR COVER_DIR
+ * Also the regression test for "redraws every frame" (docs/LOADER_UI.md): on
+ * every screen, once it has settled, frames with nothing changed must draw
+ * nothing. And that a tap on the touchscreen reaches the item or footer hint
+ * under it. Exits 1 if a check fails. */
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -16,12 +21,15 @@ loader_state g;
 
 static uint32_t fb[1280 * 720];
 static uint32_t ms;
+static int flushes, failures;
 
 static uint32_t tick(void) { return ms; }
 
 static void flush(lv_display_t *d, const lv_area_t *a, uint8_t *px)
 {
     (void)a, (void)px;
+    if (lv_display_flush_is_last(d))
+        flushes++;
     lv_display_flush_ready(d);
 }
 
@@ -31,28 +39,75 @@ static void lvgl_log(lv_log_level_t level, const char *msg)
     fputs(msg, stderr);
 }
 
-/* Run about a second of frames so fades, focus transitions, scrolling and
- * the one-cover-per-frame decoding all finish. */
-static void settle(void)
-{
-    for (int i = 0; i < 70; i++) {
-        g.now = ms;
-        ui_update();
-        lv_timer_handler();
-        ms += 16;
-    }
-    lv_refr_now(NULL);
-}
-
 static void put32(uint8_t *p, uint32_t v)
 {
     for (int i = 0; i < 4; i++)
         p[i] = (uint8_t)(v >> 8 * i);
 }
 
-/* XRGB8888 is B,G,R,X in memory: exactly a 32-bit BMP row. */
+static void frames(int n)
+{
+    for (int i = 0; i < n; i++) {
+        g.now = ms;
+        ui_update();
+        lv_timer_handler();
+        ms += 16;
+    }
+}
+
+/* A finger on the touchscreen, for the tap check. */
+static bool finger;
+static lv_point_t finger_at;
+
+static void touch(lv_indev_t *indev, lv_indev_data_t *data)
+{
+    (void)indev;
+    data->point = finger_at;
+    data->state = finger ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+}
+
+/* Tap at x, y; fails the run unless ui_tap() then reports action a on item. */
+static void tap(int x, int y, int a, int item)
+{
+    int got_item, got;
+    finger_at = (lv_point_t){ x, y };
+    finger = true;
+    frames(4);
+    finger = false;
+    frames(4);
+    got = ui_tap(&got_item);
+    if (got != a || got_item != item) {
+        fprintf(stderr, "tap at %d,%d: action %d item %d, expected %d %d\n", x, y, got, got_item, a, item);
+        failures++;
+    }
+}
+
+/* Run about a second of frames so fades, focus transitions, scrolling and
+ * the one-cover-per-frame decoding all finish. */
+static void settle(void)
+{
+    frames(70);
+    lv_refr_now(NULL);
+}
+
+/* XRGB8888 is B,G,R,X in memory: exactly a 32-bit BMP row. Before saving:
+ * the redraw check, then a timed full redraw (host CPU, not Switch timing). */
 static void shot(const char *dir, const char *name)
 {
+    int before = flushes;
+    frames(10);
+    if (flushes != before) {
+        fprintf(stderr, "FAIL %s: %d frames drawn with nothing changed\n", name, flushes - before);
+        failures++;
+    }
+    struct timespec t0, t1;
+    lv_obj_invalidate(lv_screen_active());
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    lv_refr_now(NULL);
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    fprintf(stderr, "host-only full redraw  %-28s %5.1f ms\n", name,
+            (double)(t1.tv_sec - t0.tv_sec) * 1e3 + (double)(t1.tv_nsec - t0.tv_nsec) / 1e6);
+
     char path[512];
     uint8_t h[54] = { 'B', 'M' };
     snprintf(path, sizeof path, "%s/%s.bmp", dir, name);
@@ -131,12 +186,17 @@ int main(int argc, char **argv)
     lv_display_t *d = lv_display_create(1280, 720);
     lv_display_set_flush_cb(d, flush);
     lv_display_set_buffers(d, fb, NULL, sizeof fb, LV_DISPLAY_RENDER_MODE_DIRECT);
+    lv_indev_t *pointer = lv_indev_create();
+    lv_indev_set_type(pointer, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(pointer, touch);
 
     rsl_input_config cfg;
     rsl_config_preset(&cfg, RSL_PRESET_DEFAULT);
     rsl_input_init(&g.in, &cfg);
     g.capture = -1;
-    g.sd_ok = g.full_memory = g.pad_connected = g.runtime_found = true;
+    g.accent = 0xff5fa8;
+    g.accent_hue = 330;
+    g.sd_ok = g.full_memory = g.pad_connected = g.runtime_found = g.backdrops = true;
     g.global_load = RSL_LOAD_OK;
     g.applet_type = "Application (full memory)";
     g.mode = "Handheld";
@@ -173,7 +233,7 @@ int main(int argc, char **argv)
     cover(add("tutorial", "Ren'Py Tutorial", "8.5.3.26051504", "renpy-8.5.3"), covers, "tutorial-main_menu");
     add("neon-rain", "Neon Rain Detective", "8.1.3", "renpy-8.5.3");
 
-    static const char *const art[] = { "the_question-main_menu", "the_question-bguni", "the_question-bgclub",
+    static const char *const art[] = { "the_question-main_menu", "the_question-bguni", NULL,
                                        NULL, "the_question-bglecturehall", "tutorial-bgcave", NULL, NULL,
                                        NULL, "tutorial-bgwashington", "tutorial-main_menu" };
     for (int k = 0; k < (int)(sizeof art / sizeof art[0]); k++)
@@ -187,7 +247,7 @@ int main(int argc, char **argv)
     rsl_log("the-question: runtime renpy-8.5.3 (" RUNTIME_NRO ")");
     rsl_log("chain-loading: \"" RUNTIME_NRO "\" --return ...");
 
-    ui_init(ttf, (size_t)len);
+    ui_init(ttf, (size_t)len, NULL, 0);
 
     g.screen = SCR_LIBRARY;
     settle();
@@ -200,16 +260,19 @@ int main(int argc, char **argv)
     settle();
     shot(out, "1c-library-grid");
     g.layout = LAYOUT_ROW;
-    g.accent = THEME_BLUE;
+    g.accent = 0x25d0f2;
     settle();
     shot(out, "1d-library-row-blue");
-    g.accent = THEME_PINK;
+    g.accent = 0xff5fa8;
     g.layout = LAYOUT_CINEMA;
     settle();
     shot(out, "1e-library-cinematic");
     g.sel = 4;
     settle();
     shot(out, "1f-library-cinematic-moved");
+    g.sel = 2;   /* a cover but no menu art: a glow in the cover's colour */
+    settle();
+    shot(out, "1g-library-cinematic-no-art");
     g.sel = 0;
     g.layout = LAYOUT_ROW;
     g.menu_open = true;
@@ -223,6 +286,30 @@ int main(int argc, char **argv)
     g.game = 4;
     settle();
     shot(out, "3-detail");
+
+    g.screen = SCR_LIBRARY;
+    settle();
+    g.screen = SCR_DETAIL;
+    g.game = 5;   /* recompiled, and with issues: longer than the room above the buttons */
+    g.info[5].issues = g.info[4].issues;
+    memcpy(g.info[5].issue, g.info[4].issue, sizeof g.info[5].issue);
+    settle();
+    shot(out, "3b-detail-long");
+    ui_scroll(1);
+    settle();
+    shot(out, "3c-detail-long-scrolled");
+    g.info[5].issues = 0;
+
+    g.screen = SCR_LIBRARY;
+    settle();
+    g.screen = SCR_DETAIL;
+    g.game = 4;
+    g.backdrops = false;   /* Layout page: background off */
+    settle();
+    shot(out, "3d-detail-no-background");
+    g.backdrops = true;
+    tap(1112, 611, RSL_ACT_CONFIRM, DETAIL_LAUNCH);   /* the Launch button */
+    tap(1200, 688, RSL_ACT_BACK, -1);                 /* the "B Back" hint */
 
     g.screen = SCR_LIBRARY;
     settle();
@@ -283,7 +370,28 @@ int main(int argc, char **argv)
 
     g.screen = SCR_HELP;
     settle();
-    shot(out, "10-how-to-play");
+    shot(out, "10a-how-to-play");
+    g.sel = 3;
+    settle();
+    shot(out, "10b-how-to-play-scrolled");
+    g.sel = 0;
+
+    g.screen = SCR_LAYOUT;
+    g.sel = 0;
+    settle();
+    shot(out, "11-layout");
+    g.sel = SET_PRESET + 2;
+    g.accent = 0xa78bfa;
+    settle();
+    shot(out, "12a-layout-colour");
+    g.sel = SET_CUSTOM;
+    g.accent_hue = 20;
+    g.accent = ui_hue_color(20);
+    settle();
+    shot(out, "12b-layout-custom-near-red");
+    g.sel = 0;
+    g.accent = 0xff5fa8;
+    g.accent_hue = 330;
 
     g.screen = SCR_LIBRARY;
     g.game_count = 0;
@@ -291,5 +399,7 @@ int main(int argc, char **argv)
     g.full_memory = false;
     settle();
     shot(out, "9-library-empty");
-    return 0;
+    if (failures)
+        fprintf(stderr, "%d check(s) failed: redraws, taps\n", failures);
+    return failures != 0;
 }

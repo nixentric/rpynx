@@ -11,6 +11,11 @@ cc -std=gnu11 -g -O1 -Wall -Wextra -Werror -Wno-deprecated-declarations -fsaniti
     -lm -o "$out/test_input"
 "$out/test_input"
 
+# Loader screens (app/ui) through LVGL on the host, under ASan/UBSan: renders
+# the mockups and fails if a settled screen keeps redrawing or a tap misses
+# its target (macOS: sips).
+scripts/mockups.sh >/dev/null
+
 # Importer: macOS system Python, standard library only.
 /usr/bin/python3 -m unittest tests/unit/test_importer.py
 

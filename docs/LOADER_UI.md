@@ -1,9 +1,24 @@
 # Loader UI (Milestone 7)
 
-The graphical game library that replaces the libnx text console in `app/launcher/main.c`.
+The graphical game library that replaced the libnx text console of the loader.
 
-Status: waiting for design approval. The screens exist and render on the Mac
-(`scripts/mockups.sh`); the Switch side (framebuffer, input, `main.c`) is the next phase.
+Status (2026-10-22):
+- Mockups approved; phase 2 built; first hardware test done (screenshots and `ui` log lines).
+- Second round, from the user's review of that test: fonts measured so nothing is cut off, icons centred
+  on the text, bigger covers, a controller-shaped test screen, pages for the library layout
+  and the accent colour, How to play as an illustrated guide, the menu slides in.
+- Third round, from the user's review on the Switch: details keep Launch (with a play icon) at the bottom right
+  and scroll their facts; backgrounds behind the details and Cinematic, switchable; one Layout page for the
+  layout, the backgrounds and the accent colour; everything works by touch as well.
+- Builds with 0 warnings; `.nro` 731 KB (363 KB with the text console). Second hardware test pending.
+- Code: `app/launcher/` (main.c, actions.c, library.c, controls.c) and `app/ui/` (ui.c,
+  ui_library.c, ui_controls.c, ui_pages.c), split per screen group for readability.
+
+First hardware run (handheld, application mode, 4 games, no covers):
+- first frame 80 ms after `main()`;
+- cores 0-2 at 1 % when idle, SoC 36-38 °C;
+- frames 11-17 ms on average, full-screen redraws (fades, layout changes) 20-42 ms;
+- heap 20 MB in use, 24 MB with the Cinematic backdrop (since then also used by the detail page).
 
 ## Library: LVGL 9.6.0
 
@@ -37,16 +52,17 @@ Mockups: `scripts/mockups.sh` writes `build/host/mockups/*.png` (1280×720, the 
 
 | Screen | Content |
 |---|---|
-| Library (home), Row layout (default) | Like the Switch HOME menu: one line of portrait covers that scrolls sideways. The focused cover is 25 % bigger; below the row are its title, status, Ren'Py version, runtime, and the reason it cannot start (or its number of performance issues) |
-| Library, Grid layout | Six portrait covers per row with titles, scrolling up and down |
-| Library, Cinematic layout | The Row layout over the focused game's own menu art, spread across the whole screen and darkened toward the text and the row. No header line, no game count: a big pink title (48 px), its tags, and one line of covers along the bottom (focused cover +4 %). Mockups `1e`, `1f` |
+| Library (home), Row layout (default) | Like the Switch HOME menu: one line of 220×330 portrait covers that scrolls sideways. The focused cover is 12 % bigger; below the row are its title, status, Ren'Py version, runtime, and the reason it cannot start (or its number of performance issues) |
+| Library, Grid layout | Five portrait covers per row with titles, scrolling up and down |
+| Library, Cinematic layout | The Row layout over the focused game's own menu art, spread across the whole screen and darkened under the header, toward the text and toward the row; games without art get a dark glow in their cover's main colour (or their placeholder colour). No header line, no game count: a big white title (48 px), its tags, and one line of covers along the bottom (focused cover +4 %). Mockups `1e`, `1f`, `1g` |
 | Library, all layouts | Badges: red `!` (cannot start), amber `!` (performance issues). Header: game count, Handheld/Docked, an amber "Applet mode" chip. Red/amber banners for a read-only SD folder or a controller file loaded from backup. Empty library: where to copy games |
-| Menu (+ on the library) | Panel on the right: Controller settings, Controller test, Diagnostics, Library layout (A: next of Row, Grid, Cinematic), Accent colour (A switches Pink ↔ Blue), How to play, Exit to the Homebrew Menu |
-| How to play | Shown once on the first start, then from the + menu. Left: what each button does in a game, drawn from the user's current mapping, and which stick moves the cursor. Right: start with full memory (hold R; from the Album games do not start), adding games (desktop importer, then `switch/renpy-loader/games/`), the emergency combo. A or B closes it |
-| Game details (A on a cover) | Big cover; title, folder, Ren'Py version, status, runtime and whether it is installed; notes for Ren'Py 7 recompiled games, the reason a game cannot start, and up to three performance issues. Buttons: Launch (Can't launch when there is a problem), Controls for this game |
+| Menu (+ on the library) | Panel that slides in from the right: Controller settings, Controller test, Diagnostics, Layout (its subtitle: the layout, accent and background in use), How to play, Exit to the Homebrew Menu. The items scroll when they do not fit; the help (A, B) stays at the bottom under a rule |
+| How to play | Shown once on the first start, then from the + menu. An illustrated guide in five cards that scrolls (up/down): the buttons in a game (from the user's current mapping), starting with full memory, adding games, the + menu, the emergency combo. Each card has a small drawing made of shapes. A or B closes it |
+| Layout (+ menu) | One scrolling page. Library: Row, Grid and Cinematic side by side, each a white wireframe preview with a short description, "In use" on the current one; A uses the focused one. Background: game art behind Cinematic and the details, on or off (left/right or A); off, both are plain black and no backdrop is decoded. Colour: eight presets and a custom hue strip (left/right, live); a hue within 25° of the error red shows a warning beside the heading. The page follows a new accent live, without a rebuild. Mockups `11`, `12a`, `12b`, `3d` |
+| Game details (A on a cover) | Over the game's menu art (else its cover, else the glow of the Cinematic layout), faded and dark toward the bottom. Big cover; title, folder, Ren'Py version, status, runtime and whether it is installed; notes for Ren'Py 7 recompiled games, the reason a game cannot start, and up to three performance issues; these scroll (up/down) when they run longer than the room. Buttons, always at the bottom right: Controls for this game, then Launch with a play icon (Can't launch when there is a problem). Mockups `3`, `3b`, `3c`, `4` |
 | Applet-mode notice | Launch in applet mode (the loader opened from the Album) starts nothing. The notice says why (memory available; games crash the whole console there, hardware runs 8 and 26) and how to start with full memory (close the loader, hold R while opening a game). One button, OK; no "Launch anyway". The library header keeps the amber "Applet mode" chip |
 | Controller settings | Global or per-game. One row per action with its buttons as chips, conflicts in red, "Press a button ... 5 s" while assigning; then deadzone, cursor speed and acceleration, repeat delay and interval, sticks, cursor visibility. Header: profile, preset, Unsaved |
-| Controller test | Physical buttons and logical actions light up; both sticks (after the deadzone); touch, cursor, the last 8 events |
+| Controller test | The buttons laid out as on the controller (shoulder buttons on top, D-pad and A/B/X/Y as crosses, the sticks between), lit in the accent while pressed; the logical actions; touch, cursor and the last 6 events |
 | Diagnostics | Applet type, display, memory bar, SD folder, controller file, runtime; the recent log; Run Python self-test |
 
 The status line (left of the footer) shows the last message from the logic: red for errors, green for success. Screens with no message show a note there (controller settings: the emergency combo).
@@ -58,7 +74,7 @@ Every key goes through the mapping engine (`platform/input`), so a remap applies
 | Action (default button) | Library, Row / Cinematic | Library, Grid | Details | Settings | Test | Diagnostics | Menu / notice |
 |---|---|---|---|---|---|---|---|
 | left / right (D-pad, stick) | previous / next game | move in the grid | move between buttons | adjust a value | - | - | - |
-| up / down (D-pad, stick) | - | move in the grid | - | rows | - | - | move (menu) |
+| up / down (D-pad, stick) | - | move in the grid | scroll the facts | rows | - | - | move (menu) |
 | confirm (A) | details | details | press button | assign / toggle | - | self-test | select / OK |
 | back (B) | - | - | library | back (twice if unsaved) | hold 1 s | library | close |
 | hide_ui (X) | game controls | game controls | - | reset to default | - | - | - |
@@ -68,11 +84,11 @@ Every key goes through the mapping engine (`platform/input`), so a remap applies
 - Every screen opens with its first item focused. The library keeps the focused game when you come back from a game's details.
 - The row and the grid stop at their edges; lists wrap around, as in the console UI.
 - How to play opens by itself on the first start; `config/loader.json` remembers that it was seen (`"help_seen": true`).
-- `config/loader.json` holds the loader's own settings: `{"library_layout": "row", "accent": "pink", "help_seen": true}`; `library_layout` is `row`, `grid` or `cinematic`.
+- `config/loader.json` holds the loader's own settings: `{"library_layout": "row", "backgrounds": true, "accent": "#ff5fa8", "accent_hue": 330, "help_seen": true}`; `library_layout` is `row`, `grid` or `cinematic`; `backgrounds` is true unless set to false.
 - Library layout: Row by default (what the user described first). The + menu switches it; it is saved in `config/loader.json` (`{"library_layout": "row"}`, written atomically like the controller files), not in the controller files, whose parser rejects unknown keys.
 - Held directions repeat with the user's own repeat delay and interval.
 - Hold + and − for 3 s anywhere: default controls, controller settings open (unchanged).
-- Touch: not in this milestone.
+- Touch: the touchscreen is an LVGL pointer (`main.c`). Dragging scrolls every list and row; a tap on an item focuses it and confirms it, like A (a How to play card is only focused); a tap on a footer hint does that hint's action, on the second icon of a two-button hint (← →) the second one; a tap beside the + menu or the applet notice closes it. The controller test is left by holding B, so there a tap on its hint leaves at once. `tests/ui/mockups.c` checks a tap on Launch and on the Back hint.
 
 Why there is no LVGL keypad input device: the mapping engine already turns buttons into actions, with the repeat timing from the user's settings. A keypad device would add LVGL's own key repeat on top, and it has no keys for hide_ui, history or game_menu. The logic in `main.c` moves `g.sel` on each action event, as the console UI does, and `ui.c` shows that as focus. The requirement holds either way: no key reaches the UI without passing through the user's mapping.
 
@@ -90,7 +106,7 @@ OLED dark with a pink accent, as the user asked ("lebih dark mode OLED", "warna 
   - Focused rows and buttons get a dark pink fill inside: 10 % accent mixed into `#121215`. Stronger fills (20 % and 40 % into `#1f1f25`) were tried and rejected: the pink text disappeared into them.
   - The same pink marks lit controller-test chips and the profile chip.
   - A disabled button ("Can't launch") keeps grey text even when focused.
-- **Accent colour setting:** Pink (default) or Blue (`#25d0f2`), switched in the + menu and saved in `config/loader.json`.
+- **Accent colour setting:** any colour; eight presets (Pink default, Blue `#25d0f2`, Violet, Indigo, Teal, Lime, Sky, White) or a custom hue, chosen on the Layout page and saved in `config/loader.json` (`"accent": "#ff5fa8"`, `"accent_hue"`).
   - Only the accent changes. Background, cards, text, amber, green and the orange-red errors are the same in both, so the error/focus separation holds for both.
   - In `ui.c` the accent is one value picked by the setting (`ACCENT`), not a second palette.
   - Mockup: `1d-library-row-blue.png`.
@@ -111,7 +127,8 @@ OLED dark with a pink accent, as the user asked ("lebih dark mode OLED", "warna 
   - hbmenu's dark theme uses the filled set for A, B, X, Y (E0A0 to E0A3) and for + and − (E0B3, E0B4). Pick the set on hardware.
   - SL, SR and the stick directions keep the drawn chips, which are also the fallback when the shared font cannot be loaded.
   - The mockups on the Mac show the drawn chips (dark glyphs on light discs) as stand-ins: Nintendo's font is not on the Mac, and it is not copied here.
-- Fonts: 18 / 22 / 28 / 36 px.
+- Fonts: 18 / 22 / 28 / 36 / 48 px. The console's font reports a line box too tight for its own glyphs (descenders were cut, wrapped lines overlapped on the first hardware run), so `fit_lines()` measures real glyphs (Á, g, j, 夏) and sets each size's line box from them with some air. Running text gets 8 px between lines.
+- Button icons are sized to 26 px and centred in their own line box (`icon_font()`), so they line up with the text beside them. A stick direction shows the stick's icon; the D-pad arrows are the console's own. No LVGL symbol glyphs are used: the console's font answers for their code points with an empty box.
 - Effects, all light: the focus transition, a 150 ms fade between screens, a 120 ms fade for the menu, notice and status line, and animated scrolling to the focused item.
 
 ## Covers
@@ -131,14 +148,14 @@ where a real poster comes in, for example a 600×900 image from SteamGridDB or a
   - a progressive JPEG, a larger picture or an unreadable file gets the placeholder and one line in `loader.log`.
 - **Placeholder:** a cover coloured from the folder name, with the title's first letter. Used for games without a cover, such as games copied by hand.
 - **Cost on the Switch:**
-  - LVGL's JPEG decoder (TJpgDec) keeps nothing between draws, so each cover is decoded once, scaled to a 176×264 thumbnail (186 KB; about 12 MB for 64 games);
-  - both layouts use the same thumbnails. The row shows the focused cover 25 % larger by scaling that thumbnail, so it is a little soft. If that looks bad on the Switch, decode the focused cover from its 300×450 file instead;
+  - LVGL's JPEG decoder (TJpgDec) keeps nothing between draws, so each cover is decoded once, scaled to a 220×330 thumbnail (290 KB; about 19 MB for 64 games);
+  - all layouts use the same thumbnails. The row shows the focused cover 12 % larger by scaling that thumbnail;
   - covers are decoded one per frame after the library first appears, so start-up does not wait for them;
-  - the detail page decodes its 300×450 cover when it opens;
+  - the detail page decodes its 300×450 cover when it opens, and its backdrop (else the cover again) into the same 1280×720 buffer as the Cinematic layout;
   - Cinematic layout:
     - the backdrop is the focused game's `backdrop.jpg` (640×360), cover-fit to the screen, with the darkening baked into one 1280×720 buffer (3.7 MB). Drawing it afterwards is a copy;
     - it is redone 150 ms after the focus stops moving, so holding a direction never decodes on every step;
-    - games without a backdrop get their placeholder colour, darkened the same way;
+    - games without a backdrop get a glow in their cover's main colour (six hue bins over the 220×330 thumbnail, weighted by how colourful each pixel is), darkened the same way;
     - the loader decodes JPEGs up to 600×900 worth of pixels (540 000), so 640×360 fits.
   - LVGL's decoder logs one warning per decode when it reads past the last row of blocks. The picture is complete.
 
@@ -156,7 +173,7 @@ where a real poster comes in, for example a 600×900 image from SteamGridDB or a
   - PNG, JPEG and WebP sources all work through ffmpeg;
   - without ffmpeg: no cover, and the report says ffmpeg is needed for covers.
 
-## Next phase (after approval)
+## Phase 2 (built; hardware test pending)
 
 - `main.c`: keep its logic (scan, manifest table and refusals, applet warning and confirmation, per-game controls, diagnostics, self-test, emergency combo).
   - Replace the `draw_*` functions with `ui_update()`.
@@ -183,7 +200,7 @@ A UI bug must not keep the console busy or hot. Each item stays small.
    - once the animations finish, further refresh cycles flush nothing.
 
    The test counts flush calls, so it catches `set_text` with the same text, style resets and similar bugs.
-3. **Bounded cover memory.** The library holds at most `MAX_GAMES` (64) games, so the thumbnails take at most about 12 MB, the same for both layouts.
+3. **Bounded cover memory.** The library holds at most `MAX_GAMES` (64) games, so the thumbnails take at most about 19 MB, the same for every layout.
    - Raising `MAX_GAMES` also means keeping only the visible rows, plus one row ahead, decoded.
    - Until then, re-decoding while scrolling would only add stutter.
    - The exit line logs the heap peak (`mallinfo`).

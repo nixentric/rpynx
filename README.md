@@ -72,10 +72,14 @@ circumvent DRM. Use only games you own in DRM-free form.
 The project's own source code is under the MIT License ([LICENSE](LICENSE)).
 
 Third-party code in this repository: cJSON 1.7.18 (MIT, `third_party/cjson/LICENSE`).
+LVGL 9.6.0 (MIT) is not stored here: `third_party/lvgl/fetch.sh` downloads it, checksummed.
 
 The built `.nro` files also contain third-party code under its own licenses, which MIT does
 not replace:
-- `renpy-loader.nro`: libnx (ISC) and cJSON (MIT).
+- `renpy-loader.nro`: libnx (ISC), cJSON (MIT), LVGL (MIT) with its bundled stb_truetype
+  (MIT or public domain), TJpgDec (ChaN's free licence) and the Montserrat font (SIL OFL 1.1).
+  The text font and button icons are the console's own, read from its shared memory at run
+  time; nothing of them is in the `.nro`.
 - `renpy-runtime.nro`: CPython (PSF), Ren'Py (MIT, with LGPL-derived parts), the Ren'Py SDK's
   fonts (Source Han Sans Lite and Vazirmatn, SIL OFL 1.1),
   SDL2 (zlib), Mesa (MIT), libnx (ISC) and others.
