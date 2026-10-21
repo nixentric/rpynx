@@ -862,12 +862,14 @@ int main(int argc, char **argv)
          * way to stop it: close the software rather than return to the library. */
         rsl_log("%zu thread(s) still running: closing the software instead of returning to the library",
                 g_threads_stuck);
-        consoleInit(NULL);
-        printf("A thread of the game did not stop.\n\n"
-               "To avoid a crash in the next game, the software closes now.\n"
-               "Start it again from the HOME menu (hold R).\n\nPress + to close.\n");
-        wait_for_plus();
-        consoleExit(NULL);
+        /* The system's error dialog, not the console: after Mesa and SDL shut down the
+         * console could not get a framebuffer and aborted (hardware run 23). */
+        ErrorApplicationConfig dlg;
+        if (R_SUCCEEDED(errorApplicationCreate(&dlg, "A thread of the game did not stop. "
+                "The software closes now to avoid a crash in the next game.",
+                "Start the loader again from the HOME menu (hold R while starting a game). "
+                "Details are in " ROOT "/logs/runtime.log.")))
+            errorApplicationShow(&dlg);
         appletUnhook(&hook);
         romfsExit();
         rsl_log_close();

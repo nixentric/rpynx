@@ -109,10 +109,25 @@ def _log_saves():
         renpy.config.after_load_callbacks.append(_after_load)
 
 
+def _close_dying_streams():
+    """Ren'Py's audio.quit() stops the thread that calls renpysound.periodic() before it
+    fades the channels out, so a stream that ends then stays on the C side's "dying" list
+    and its decode thread waits forever (ffmedia decode_thread in SDL_CondWait). On a PC
+    the process ends anyway; here the next game runs in the same process, and that
+    thread's stack crashed it (hardware runs 22-23). Runs after audio.quit()."""
+    try:
+        renpy.audio.renpysound.periodic()
+        print("rsl: finished audio streams closed at exit", flush=True)
+    except Exception as e:
+        print("rsl: closing finished audio streams failed: %r" % e, flush=True)
+
+
 def _setup_display():
     """Runs from Interface.start(), once the game's config exists."""
     config = renpy.config
     _log_saves()
+    if _close_dying_streams not in config.python_exit_callbacks:
+        config.python_exit_callbacks.append(_close_dying_streams)
     # Ren'Py also matches these names against ordinary key/mouse events, and
     # a name missing from config.keymap is parsed as a key specifier (error).
     for name in NAMED.values():
