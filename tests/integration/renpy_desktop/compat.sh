@@ -11,13 +11,13 @@
 #  overlays    Forbidden Fantasy's debug_screen + overlay quick menu: Back is never
 #              selected for the player (run 18)
 #  menufocus   the main menu's first button is selected and the cursor hidden (runs 14-15)
-# Needs build-test/sdk from tests/integration/renpy_desktop/run.sh.
+# Needs build/test/sdk from tests/integration/renpy_desktop/run.sh.
 # usage (host): tests/integration/renpy_desktop/compat.sh
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 exec docker run --rm --network none -v "$PWD":/src -w /src rsl-test:2 bash -c '
 set -euo pipefail
-S=build-test/sdk P=build-test/sdk/lib/py3-linux-aarch64/python O=build-test/compat-out
+S=build/test/sdk P=build/test/sdk/lib/py3-linux-aarch64/python O=build/test/compat-out
 rm -rf $O && mkdir -p $O && cp -R tests/integration/renpy_desktop/compat-games/. $O/
 cp runtime/renpy/boot/*.py tests/integration/renpy_desktop/{_rslnx,scenario,horizon_sim}.py $S/
 export SDL_AUDIODRIVER=dummy RENPY_RENDERER=gles2 RSL_SCENARIO=0

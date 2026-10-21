@@ -24,6 +24,6 @@ PyInstaller.__main__.run([
     "--onefile" if sys.platform == "win32" else "--onedir",    # macOS: a .app bundle
     "--noconfirm",
     "--distpath", os.path.join(repo, "dist", "importer"),
-    "--workpath", os.path.join(repo, "build-test", "pyinstaller"),
-    "--specpath", os.path.join(repo, "build-test", "pyinstaller"),
+    "--workpath", os.path.join(repo, "build", "test", "pyinstaller"),
+    "--specpath", os.path.join(repo, "build", "test", "pyinstaller"),
 ])

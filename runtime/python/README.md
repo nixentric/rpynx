@@ -15,7 +15,7 @@ scripts/build.sh runtime
 `build.sh` (run inside the container) does the following:
 
 1. Builds a host CPython 3.12.8. A cross build needs a build interpreter of the same version.
-   It is cached in `build-python/host`.
+   It is cached in `build/python/host`.
 2. Extracts a pristine source tree and applies `patches/*.diff`.
 3. Configures with `config.site`, `MODULE_BUILDTYPE=static`, `--disable-shared`, and the
    devkitPro portlib environment (`switchvars.sh`).
@@ -24,7 +24,7 @@ scripts/build.sh runtime
 5. Compiles the stdlib with the host interpreter into sourceless, hash-based `.pyc` files
    inside a deterministic `python312.zip` (`pack_stdlib.py`).
 
-Output goes to `build-python/dist/{include/python3.12, lib/libpython3.12.a, lib/python312.zip}`.
+Output goes to `build/python/dist/{include/python3.12, lib/libpython3.12.a, lib/python312.zip}`.
 
 Source: python.org `Python-3.12.8.tar.xz`, sha256
 `c909157bb25ec114e5869124cc2a9c4a4d4c1e957ca4ff553f1edc692101154e`. That matches

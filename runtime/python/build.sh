@@ -5,13 +5,13 @@
 #   2. patched source tree + configure for aarch64-none-elf (Horizon), every
 #      extension module built in statically (no dlopen on Horizon)
 #   3. libpython3.12.a, headers, and the stdlib compiled to .pyc in a zip
-# Output: build-python/dist/{include,lib/libpython3.12.a,lib/python312.zip}
+# Output: build/python/dist/{include,lib/libpython3.12.a,lib/python312.zip}
 set -euo pipefail
 
 PYVER=3.12.8
 SHA256=c909157bb25ec114e5869124cc2a9c4a4d4c1e957ca4ff553f1edc692101154e
 TOP=$(pwd)
-B=$TOP/build-python
+B=$TOP/build/python
 HERE=$TOP/runtime/python
 JOBS=${JOBS:-4}
 # Fixed __DATE__/__TIME__ in sys.version (CPython 3.12.8 release day) so

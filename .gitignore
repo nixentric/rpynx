@@ -1,16 +1,8 @@
-build-switch/
-build-host/
-build-lvgl/
+build/
 dist/
 __pycache__/
 *.pyc
 .DS_Store
-build-python/
-build-runtime/
-build-runtime-romfs/
-build-renpy/
-build-test/
 core
 core.*
 graphify-out/
-build-*/

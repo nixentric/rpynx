@@ -3,9 +3,9 @@
 # (scripts/build.sh renpy) after `scripts/build.sh python`. Steps:
 #   1. official Ren'Py 8.5.3 source tarball and Cython 3.2.4 sdist (both sha256-pinned)
 #   2. Cython -> C with Ren'Py's own `setup.py generate` (host CPython 3.12.8)
-#   3. native modules -> build-renpy/dist/lib/librenpy.a (+ inittab)
+#   3. native modules -> build/renpy/dist/lib/librenpy.a (+ inittab)
 #   4. Ren'Py's Python package + common/ with the compatibility overlay,
-#      compiled to .pyc -> build-renpy/dist/renpy-base/
+#      compiled to .pyc -> build/renpy/dist/renpy-base/
 set -euo pipefail
 
 # Official release source (sha256 from https://www.renpy.org/dl/8.5.3/checksums.txt,
@@ -20,10 +20,10 @@ CYTHON_VER=3.2.4
 CYTHON_SHA256=84226ecd313b233da27dc2eb3601b4f222b8209c3a7216d8733b031da1dc64e6
 
 TOP=$(pwd)
-B=$TOP/build-renpy
+B=$TOP/build/renpy
 HERE=$TOP/runtime/renpy
-HOSTPY=$TOP/build-python/host/bin/python3.12
-PYINC=$TOP/build-python/dist/include/python3.12
+HOSTPY=$TOP/build/python/host/bin/python3.12
+PYINC=$TOP/build/python/dist/include/python3.12
 export JOBS=${JOBS:-4}
 [ -x "$HOSTPY" ] || { echo "run scripts/build.sh python first"; exit 1; }
 

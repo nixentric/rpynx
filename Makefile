@@ -44,21 +44,21 @@ include $(DEVKITPRO)/libnx/switch_rules
 # Two programs share this Makefile:
 #   PROGRAM=loader  (default) dist/renpy-loader.nro   the library / settings UI
 #   PROGRAM=runtime           dist/renpy-runtime.nro  embedded CPython (+ Ren'Py later)
-# `make runtime` needs `make python` (static CPython in build-python/dist) first.
+# `make runtime` needs `make python` (static CPython in build/python/dist) first.
 PROGRAM		?=	loader
 APP_AUTHOR	:=	Ren'Py Switch Loader contributors
 APP_VERSION	:=	0.1.0
 DATA		:=
-PYDIST		:=	$(CURDIR)/build-python/dist
-RENPYDIST	:=	$(CURDIR)/build-renpy/dist
+PYDIST		:=	$(CURDIR)/build/python/dist
+RENPYDIST	:=	$(CURDIR)/build/renpy/dist
 
 ifeq ($(PROGRAM),runtime)
 TARGET		:=	renpy-runtime
-BUILD		:=	build-runtime
+BUILD		:=	build/runtime
 SOURCES		:=	runtime runtime/python app/diagnostics platform/input platform/filesystem third_party/cjson
-INCLUDES	:=	app/diagnostics platform/input platform/filesystem third_party/cjson build-python/dist/include/python3.12
+INCLUDES	:=	app/diagnostics platform/input platform/filesystem third_party/cjson build/python/dist/include/python3.12
 APP_TITLE	:=	Ren'Py Switch Runtime
-ROMFS		:=	build-runtime-romfs
+ROMFS		:=	build/runtime-romfs
 # Static archives with circular dependencies, so one group. GLESv2 is reached
 # through SDL_GL_GetProcAddress (Ren'Py's uguu loader) but must be linked.
 # The wraps let runtime/main.c track every pthread and close leftovers at exit.
@@ -70,7 +70,7 @@ PROGRAM_LIBS	:=	-Wl,--wrap=__syscall_thread_create -Wl,--wrap=__syscall_thread_j
 PROGRAM_LIBDIRS	:=	$(PYDIST) $(RENPYDIST)
 else
 TARGET		:=	renpy-loader
-BUILD		:=	build-switch
+BUILD		:=	build/switch
 SOURCES		:=	app/launcher app/diagnostics platform/input platform/filesystem third_party/cjson
 INCLUDES	:=	app/diagnostics platform/input platform/filesystem third_party/cjson
 APP_TITLE	:=	Ren'Py Switch Loader
@@ -106,7 +106,8 @@ LIBDIRS	:= $(PROGRAM_LIBDIRS) $(PORTLIBS) $(LIBNX)
 # no real need to edit anything past this point unless you need to add additional
 # rules for different file extensions
 #---------------------------------------------------------------------------------
-ifneq ($(BUILD),$(notdir $(CURDIR)))
+# BUILD is nested (build/switch), so compare last components only.
+ifneq ($(notdir $(BUILD)),$(notdir $(CURDIR)))
 #---------------------------------------------------------------------------------
 
 export OUTPUT	:=	$(CURDIR)/dist/$(TARGET)
@@ -205,7 +206,7 @@ renpy:
 
 # Python-side tests, run with the host CPython 3.12.8 from `make python`.
 test-python:
-	build-python/host/bin/python3.12 tests/unit/test_horizon_paths.py build-python/src/Python-3.12.8/Lib
+	build/python/host/bin/python3.12 tests/unit/test_horizon_paths.py build/python/src/Python-3.12.8/Lib
 
 # Runtime RomFS: compiled stdlib, the Ren'Py engine (renpy-base) and the
 # Python self-test.

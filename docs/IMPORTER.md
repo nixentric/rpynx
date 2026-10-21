@@ -47,7 +47,7 @@ or the export already exists); `2` bad arguments.
 Example, on the Ren'Py demo shipped in this repo:
 
 ```bash
-python3 importer/rsl_import.py build-test/sdk/the_question --out /tmp/sd
+python3 importer/rsl_import.py build/test/sdk/the_question --out /tmp/sd
 ```
 
 ```text
@@ -179,7 +179,7 @@ python importer/build_app.py
 - The page, `rsl_import_gui.html`, is bundled as data; PyInstaller's pywebview hook adds
   pywebview's own scripts.
 - PyInstaller does not cross-compile: build the `.exe` on Windows and the `.app` on a Mac.
-- Build files go to `build-test/pyinstaller/`. Both folders are git-ignored.
+- Build files go to `build/test/pyinstaller/`. Both folders are git-ignored.
 - The app is not signed. Windows SmartScreen shows "Windows protected your PC": click *More
   info*, then *Run anyway*. On macOS, right-click the app and choose *Open* the first time.
 
@@ -417,7 +417,7 @@ picks one, and the window offers both under *Decompile*:
 | | unrpyc (default) | rpycdec |
 |---|---|---|
 | Project | [CensoredUsername/unrpyc](https://github.com/CensoredUsername/unrpyc) v2.0.4, MIT. The long-standing Ren'Py decompiler (since 2012). | [cnfatal/rpycdec](https://github.com/cnfatal/rpycdec), MIT. Younger and smaller. |
-| Install | Not on pip: `third_party/unrpyc/fetch.sh` (pinned, checksummed) puts it in `build-unrpyc/unrpyc/`. | `pip install rpycdec`. |
+| Install | Not on pip: `third_party/unrpyc/fetch.sh` (pinned, checksummed) puts it in `build/unrpyc/unrpyc/`. | `pip install rpycdec`. |
 | Python | The importer's own, 3.9+ (`/usr/bin/python3` on macOS works). | 3.10+, so not `/usr/bin/python3`; give it with `--rpycdec-python PYTHON` (command line only) or put `rpycdec` on `PATH`. |
 | Ren'Py | Made for Ren'Py 8; reads 7, and 6 from 6.18. Older games are refused. | Ren'Py 7 and 8, tested on 7.6.3, 8.2.3, 8.4.1 and 8.5.3 by recompiling its output and comparing. |
 | A script it cannot read | It names the script and decompiles the rest. | It stops there: the rest are not decompiled, and the import is refused. |
@@ -434,7 +434,7 @@ python3 importer/rsl_import.py OldGame --decompile --decompiler rpycdec --rpycde
 ```
 
 On Windows without `sh`, unpack the v2.0.4 source zip from unrpyc's releases page into
-`build-unrpyc\unrpyc\` so that `build-unrpyc\unrpyc\unrpyc.py` exists.
+`build\unrpyc\unrpyc\` so that `build\unrpyc\unrpyc\unrpyc.py` exists.
 
 How it is kept apart from the importer:
 - Both unpickle the `.rpyc` files with restricted unpicklers, and rpycdec's README warns that

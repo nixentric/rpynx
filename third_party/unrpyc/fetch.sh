@@ -1,13 +1,13 @@
 #!/bin/sh
-# Fetch unrpyc (MIT), pinned and checksummed, into build-unrpyc/unrpyc, the way
+# Fetch unrpyc (MIT), pinned and checksummed, into build/unrpyc/unrpyc, the way
 # third_party/lvgl/fetch.sh fetches LVGL. importer/rsl_import.py --decompile runs
-# build-unrpyc/unrpyc/unrpyc.py on its own Python (3.9+). Only the decompiler and its
+# build/unrpyc/unrpyc/unrpyc.py on its own Python (3.9+). Only the decompiler and its
 # licence are extracted, not the test cases.
 set -eu
 cd "$(dirname "$0")/../.."
 VER=2.0.4
 SHA256=bf2b176a82747bb98ece3a20c33872c9d1e448072096626ee084e805c7c8177d
-D=build-unrpyc
+D=build/unrpyc
 [ "$(cat $D/unrpyc/.version 2>/dev/null)" = "$VER" ] && exit 0
 T=$D/dl/unrpyc-$VER.tar.gz
 mkdir -p $D/dl

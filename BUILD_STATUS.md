@@ -137,7 +137,7 @@ switch-bzip2 1.0.8, switch-liblzma 5.8.2.
 | `scripts/test.sh` (151 checks) | macOS host, Apple clang, ASan + UBSan | n/a | all pass | 151/151 | PASS |
 | `runtime/python/selftest.py` against `python312.zip` only | Linux arm64 container, host CPython 3.12.8 | CPython 3.12.8 | 0 required failures | 0 failures (66 required checks) | PASS (host only) |
 | `tests/unit/test_horizon_paths.py` | Linux arm64 container, host CPython 3.12.8 | patched posixpath and importlib | 31 checks | 31 pass | PASS (host only) |
-| `tests/integration/renpy_desktop/run.sh` | Linux arm64 container, Xvfb + Mesa llvmpipe 22.3.6, GLES 3.2 | **official** Ren'Py 8.5.3 SDK + our `switch_main.py`/`rsl_bridge.py`, scripted `_rslnx` | 26 checks | 26 pass; screenshots in `build-test/out/` | PASS (desktop only) |
+| `tests/integration/renpy_desktop/run.sh` | Linux arm64 container, Xvfb + Mesa llvmpipe 22.3.6, GLES 3.2 | **official** Ren'Py 8.5.3 SDK + our `switch_main.py`/`rsl_bridge.py`, scripted `_rslnx` | 26 checks | 26 pass; screenshots in `build/test/out/` | PASS (desktop only) |
 | `tests/unit/test_importer.py` (25 tests, part of `scripts/test.sh`) | macOS host, `/usr/bin/python3` 3.9.6 | n/a | all pass | 25/25 | PASS |
 
 The desktop run found and fixed two bridge bugs before any hardware test:

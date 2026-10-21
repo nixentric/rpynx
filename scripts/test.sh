@@ -2,7 +2,7 @@
 # Host-side tests: the portable C core (input + filesystem) and the Python tools.
 set -eu
 cd "$(dirname "$0")/.."
-out=build-host
+out=build/host
 mkdir -p "$out"
 cc -std=gnu11 -g -O1 -Wall -Wextra -Werror -Wno-deprecated-declarations -fsanitize=address,undefined \
     -Iplatform/input -Iplatform/filesystem -Ithird_party/cjson \
@@ -15,7 +15,7 @@ cc -std=gnu11 -g -O1 -Wall -Wextra -Werror -Wno-deprecated-declarations -fsaniti
 /usr/bin/python3 -m unittest tests/unit/test_importer.py
 
 # Python-side tests need Docker and the host CPython from `scripts/build.sh python`.
-if command -v docker >/dev/null && [ -x build-python/host/bin/python3.12 ]; then
+if command -v docker >/dev/null && [ -x build/python/host/bin/python3.12 ]; then
     scripts/build.sh test-python
 else
     echo "SKIPPED python tests (needs Docker and scripts/build.sh python)"

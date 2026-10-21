@@ -11,7 +11,7 @@ set -eu
 cd "$(dirname "$0")/.."
 host=$1 cmd=$2
 base="ftp://$host/switch/renpy-loader"
-out=build-test/switch-logs
+out=build/test/switch-logs
 
 fetch() {  # fetch REMOTE LOCAL; a missing file is reported, not fatal
     if curl -sf --connect-timeout 5 "$base/$1" -o "$2"; then echo "got $1"; else echo "missing $1"; rm -f "$2"; fi

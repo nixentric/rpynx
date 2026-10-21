@@ -85,7 +85,7 @@ ENCODERS = {
 }
 # --decompile: third_party/unrpyc/fetch.sh puts unrpyc here; it runs on the importer's Python.
 UNRPYC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                      "build-unrpyc", "unrpyc", "unrpyc.py")
+                      "build", "unrpyc", "unrpyc", "unrpyc.py")
 DECOMPILERS = ("unrpyc", "rpycdec")   # --decompiler; the first is the default (docs/IMPORTER.md compares them)
 DECOMPILE_TIMEOUT = 600           # seconds for all of a game's sourceless scripts
 JUNK = {".DS_Store", "Thumbs.db", "desktop.ini", "__MACOSX"}

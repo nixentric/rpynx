@@ -35,7 +35,7 @@ runtime also links FFmpeg statically. A distributed `.nro` must therefore meet t
    `src/Setup` and compiles every source with devkitA64. Each Cython init function is
    renamed with `-DPyInit_<name>=PyInit_<dotted_name>`. It then generates an inittab that
    registers the 60 modules under their dotted names. The scheme matches renpy-build's
-   `librenpy` task (MIT), reimplemented. Output: `build-renpy/dist/lib/librenpy.a`.
+   `librenpy` task (MIT), reimplemented. Output: `build/renpy/dist/lib/librenpy.a`.
 3. **Stage the engine for RomFS.** `stage_engine.py` copies `renpy.py` and `renpy/`, then
    the overlays (`runtime/compatibility`, `runtime/renpy/boot`). It writes unchecked-hash
    `.pyc` files and adds the SDK's precompiled `common/*.rpyc` after checking each
