@@ -309,6 +309,7 @@ int main(int argc, char **argv)
             mem_at = g.now;
         }
         ui_update();
+        uint32_t d_build = stats.frames_total ? 0 : stage_ms();   /* the first screen's objects */
 
         uint32_t flushes = stats.flushes;
         uint64_t t0 = armGetSystemTick();
@@ -316,9 +317,10 @@ int main(int argc, char **argv)
         lv_timer_handler();
         if (stats.flushes != flushes) {
             if (!stats.frames_total)
-                rsl_log("ui start: first frame %llu ms after main(), %s, heap %u KiB in use",
+                rsl_log("ui start: first frame %llu ms after main(), %s, heap %u KiB in use"
+                        " (build %u ms, draw %u ms)",
                         (unsigned long long)(armTicksToNs(armGetSystemTick() - stats.start) / 1000000ULL),
-                        g.applet_type, heap_kib(false));
+                        g.applet_type, heap_kib(false), (unsigned)d_build, (unsigned)stage_ms());
             frame_drawn(armTicksToNs(armGetSystemTick() - t0) / 1000ULL);
         }
         if (g.now - stats.last_summary >= SUMMARY_MS)
