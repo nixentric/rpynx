@@ -6,8 +6,8 @@ Switch loader expects. `importer/rsl_import_gui.py` is a window over the same co
 (`/usr/bin/python3` for the command line) or Linux. Two optional tools are found on the
 system (see "Tools"):
 - 7-Zip, for `.7z` and `.rar` files;
-- FFmpeg (`ffprobe`, `ffmpeg`), to check videos, for `--optimize`, and to make the cover and
-  backdrop the loader shows (see "Cover and backdrop").
+- FFmpeg (`ffprobe`, `ffmpeg`), to check videos, for `--optimize`, and to make the cover the
+  loader shows (see "Cover").
 
 People without Python can use the built app, `RSL Importer.exe` or `RSL Importer.app` (see
 "Building the app").
@@ -21,7 +21,7 @@ order a game goes through them:
 | `archives` | Unpacks a `.zip`, `.7z` or `.rar` safely ("Archive safety"). |
 | `analysis` | Finds the game, its Ren'Py version and Python, runs the checks, builds the manifest and the report. |
 | `rpa` | Reads standard `.rpa` indexes as plain data; writes the non-ASCII archive. |
-| `media` | What would load the Switch, `--optimize` ("Switch performance"), the cover and backdrop ("Cover and backdrop"). |
+| `media` | What would load the Switch, `--optimize` ("Switch performance"), the cover ("Cover"). |
 | `recompile` | `--recompile` and `--decompile`. |
 | `exporter` | Writes a game into the library: an SD card folder, or the Switch over FTP. |
 | `library` | Lists, deletes and compares what a library holds. |
@@ -52,8 +52,7 @@ python3 importer/rsl_import.py SOURCE --out ftp://192.168.1.20:5000   # report +
 | `--id ID` | Choose the folder name yourself. It must already be in normalised form (see below). |
 | `--replace` | Update an existing export. Without it, the importer refuses if `games/<id>` exists. |
 | `--optimize` | Re-encode videos above 30 fps at 30 fps, at the same size and constant quality. Needs FFmpeg. See "Switch performance". |
-| `--cover IMAGE` | The game's cover in the loader, from any picture FFmpeg reads (a 2:3 poster suits it best). Default: the middle of the game's menu art. See "Cover and backdrop". |
-| `--backdrop IMAGE` | The picture behind the loader's detail page and Cinematic layout (16:9). Default: the game's menu art. |
+| `--cover IMAGE` | The game's cover in the loader, from any picture FFmpeg reads (a 2:3 poster suits it best). Default: the middle of the game's menu art. See "Cover". |
 | `--recompile` | Ren'Py 7 / Python 2 games only. Exports without `.rpyc`, so Ren'Py 8.5.3 compiles the `.rpy` sources with Python 3 (see below). |
 | `--decompile` | Rebuilds a `.rpy` for each `.rpyc` that has none, then recompiles (implies `--recompile`). See "Decompile". |
 | `--decompiler TOOL` | With `--decompile`: `unrpyc` (default) or `rpycdec`. "Decompile" compares them. |
@@ -105,9 +104,9 @@ built app, which needs no Python at all (see "Building the app").
 
   Each card shows the game's cover as the loader does (the placeholder letter without one;
   over Wi-Fi they arrive one by one after the grid). The game's card also shows its
-  background, with *Change cover…* and *Change background…*: pick a picture, and it is
+  cover, with *Change cover…*: pick a picture, and it is
   converted and written to the SD card or the Switch at once, as a chosen picture (see
-  "Cover and backdrop"). Games without a `manifest.json` cannot have pictures.
+  "Cover"). Games without a `manifest.json` cannot have pictures.
 - **Import**:
   1. Drop a game folder, `.zip`, `.7z` or `.rar` on the window, or use *Choose folder…* /
      *Choose archive…*. It is analyzed at once.
@@ -122,8 +121,8 @@ built app, which needs no Python at all (see "Building the app").
      *Tools folder…* is `--tools`.
   4. The report is the command line's: status, Ren'Py version, the pictures, warnings,
      Switch performance issues, and the `Checked:` line (loose, archived and locked assets).
-     Above it, the cover and background made from the game's menu art, with *Change cover…*
-     and *Change background…* (`--cover`, `--backdrop`); a chosen picture is written on
+     Above it, the cover made from the game's menu art, with *Change cover…*
+     (`--cover`); a chosen picture is written on
      export.
   5. *Replace* is `--replace`. *Export* copies file by file with a progress bar. Re-encoding a
      video can take minutes, and the status line says so. *Cancel* stops after the current
@@ -212,8 +211,8 @@ python importer/build_app.py
 ## What gets exported
 
 Only the game directory is copied, and it is always named `game/` in the export. It goes to
-`switch/renpy-loader/games/<id>/game/`, with `manifest.json` next to it, and `cover.jpg` and
-`backdrop.jpg` when there are pictures (see "Cover and backdrop").
+`switch/renpy-loader/games/<id>/game/`, with `manifest.json` next to it, and `cover.jpg`
+when there is one (see "Cover").
 
 These are not copied:
 - `renpy/`, `lib/` and the `.exe`/`.app`/`.sh` launchers (the Switch runtime has its own engine);
@@ -224,33 +223,32 @@ How `--replace` works:
 - The new `game/` is staged next to the export and swapped in by rename.
 - An existing `game/saves/` is moved into the new `game/`. Ren'Py on the console writes saves
   there as well as to `saves/<id>`.
-- A cover or backdrop chosen earlier (`"cover_custom": true` in the old manifest: in the window,
+- A cover chosen earlier (`"cover_custom": true` in the old manifest: in the window,
   with `--cover`, or on the Switch) is kept, unless this export chooses one too.
 - `switch/renpy-loader/saves/` is never touched.
 
-## Cover and backdrop
+## Cover
 
 What the loader shows for a game (docs/LOADER_UI.md "Covers"):
 
 | File | Size | Where the loader shows it |
 |---|---|---|
-| `cover.jpg` | 300×450 (2:3) | The library (all layouts) and the detail page |
-| `backdrop.jpg` | 640×360 (16:9) | Behind the detail page and the Cinematic layout |
+| `cover.jpg` | 300×450 (2:3) | The library (both layouts) and the detail page |
 
-- Both are baseline JPEGs (the Switch's decoder reads no progressive JPEG), made with FFmpeg:
+- It is a baseline JPEG (the Switch's decoder reads no progressive JPEG), made with FFmpeg:
   `scale=W:H:force_original_aspect_ratio=increase,crop=W:H`, one frame, `yuvj420p`. Any
   picture FFmpeg reads works as a source (PNG, JPEG, WebP, BMP); another shape is cut from
   the middle.
-- Automatic: the game's main menu art, both pictures from it. That is `gui.main_menu_background`
+- Automatic: the game's main menu art. That is `gui.main_menu_background`
   in `gui.rpy` when it is a plain string naming an image, else `gui/main_menu.png`, loose or
-  inside a standard `.rpa`. Nothing found: no pictures, and the report says `Pictures: none`;
-  the loader shows a placeholder. FFmpeg missing: no pictures, and a warning says so.
-- Chosen: `--cover IMAGE` / `--backdrop IMAGE`, *Change cover…* / *Change background…* in the
+  inside a standard `.rpa`. Nothing found: no cover, and the report says `Pictures: none`;
+  the loader shows a placeholder. FFmpeg missing: no cover, and a warning says so.
+- Chosen: `--cover IMAGE`, *Change cover…* in the
   window (on the Import page before export, or on a game in the Library at once), or *Change
-  picture* on the Switch (a screenshot from the Album, written as `cover.bmp` / `backdrop.bmp`).
-  The manifest marks them `"cover_custom": true` / `"backdrop_custom": true`, and `--replace`
-  keeps them. A chosen picture that FFmpeg cannot read is refused with its error.
-- The report's `Pictures:` line names the files, `(chosen)` for chosen ones.
+  picture* on the Switch (a screenshot from the Album, written as `cover.bmp`).
+  The manifest marks it `"cover_custom": true`, and `--replace`
+  keeps it. A chosen picture that FFmpeg cannot read is refused with its error.
+- The report's `Pictures:` line names the file, `(chosen)` for a chosen one.
 
 ## Switch over FTP
 
@@ -268,7 +266,7 @@ How an upload works:
    connection, and the Switch is as it was. If that fails too, the next upload removes it.
 4. Then it is renamed into place: the old `games/<id>` becomes `games/.old-<id>`,
    `.uploading-<id>` becomes `games/<id>`, the old `game/saves/` is moved into the new
-   `game/`, so are the pictures chosen before (see "Cover and backdrop"), and `.old-<id>` is
+   `game/`, so is the cover chosen before (see "Cover"), and `.old-<id>` is
    deleted.
 5. If a rename in step 4 fails, the error names both folders. A `.old-<id>` left over may
    hold saves, so the next upload of that game refuses until it is moved or deleted by hand.
@@ -378,7 +376,7 @@ It does not export `unsupported` games, because no runtime could start them.
   "performance": {"issues": ["..."], "converted": {"gui/splash.webm": "vp9"},
                   "coverage": {"loose_media": 3190, "archived_media": 0, "locked_archives": []}},
   "sha256": {"script.rpyc": "…"},
-  "cover": "cover.jpg", "backdrop": "backdrop.jpg"
+  "cover": "cover.jpg"
 }
 ```
 
@@ -393,12 +391,12 @@ It does not export `unsupported` games, because no runtime could start them.
   report prints it as `Suggested: --optimize: …`, and the window shows it as an alert under
   that option.
 - `decompiled` lists the `.rpy` files that `--decompile` rebuilt (paths relative to `game/`).
-- `cover` and `backdrop` name the pictures, relative to the game's folder; absent without one.
-  `cover_custom` / `backdrop_custom` are `true` for a picture the user chose (see "Cover and
-  backdrop"). The loader's *Change picture* sets `.bmp` files there and rewrites the
+- `cover` names the picture, relative to the game's folder; absent without one.
+  `cover_custom` is `true` for a picture the user chose (see "Cover").
+  The loader's *Change picture* sets a `.bmp` file there and rewrites the
   manifest with cJSON (tabs, the keys moved to the end); the rest stays as it was.
 - The loader reads `status`, `runtime`, `renpy_version`, `recompile`, `reasons[0]`, `title`,
-  `cover`, `backdrop` and `performance.issues`:
+  `cover` and `performance.issues`:
   - its Game Library shows each game's Ren'Py version, status, runtime, and whether that
     runtime is installed;
   - Launch starts `runtimes/<runtime>.nro`. `renpy-8.5.3` falls back to

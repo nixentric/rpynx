@@ -27,21 +27,19 @@ enum { ROW_DEADZONE = RSL_ACT_COUNT, ROW_SPEED, ROW_ACCEL, ROW_DELAY, ROW_INTERV
        ROW_STICKS, ROW_CURSOR_VIS, ROW_COUNT };
 
 enum { MENU_REMAP, MENU_TEST, MENU_LAYOUT, MENU_HELP, MENU_DIAG, MENU_EXIT, MENU_COUNT };   /* + menu */
-enum { LAYOUT_ROW, LAYOUT_GRID, LAYOUT_CINEMA, LAYOUT_COUNT };   /* library layouts, docs/LOADER_UI.md */
-/* Layout page (+ menu): the library layouts, the background switch, the
- * accent colour presets, then the custom hue row. */
+enum { LAYOUT_ROW, LAYOUT_GRID, LAYOUT_COUNT };   /* library layouts, docs/LOADER_UI.md */
+/* Layout page (+ menu): the library layouts, the accent colour presets,
+ * then the custom hue row. */
 enum { ACCENT_PRESETS = 8 };
-enum { SET_BACKDROP = LAYOUT_COUNT, SET_PRESET, SET_CUSTOM = SET_PRESET + ACCENT_PRESETS, SET_COUNT };
+enum { SET_PRESET = LAYOUT_COUNT, SET_CUSTOM = SET_PRESET + ACCENT_PRESETS, SET_COUNT };
 enum { HELP_COUNT = 5 };                                          /* how-to-play cards */
 enum { DETAIL_LAUNCH, DETAIL_CONTROLS, DETAIL_PICTURE, DETAIL_COUNT };   /* detail buttons, right to left */
-enum { USE_COVER, USE_BACKDROP, USE_BOTH, USE_COUNT };            /* picture page: what it becomes */
 
 typedef enum { ST_INFO, ST_OK, ST_BAD } status_kind;
 
 struct game_info {
     char title[96];            /* manifest title, "" if none (the folder name is shown) */
     char cover[200];           /* cover JPEG (BMP if chosen on the Switch) path, "" for a placeholder */
-    char backdrop[200];        /* 16:9 picture behind Cinematic and the details, "" if none */
     char renpy[24];            /* Ren'Py version from manifest.json, "" if none */
     char state[16];            /* experimental / unsupported; "" without manifest */
     char runtime[49];          /* runtime the game needs */
@@ -57,7 +55,6 @@ typedef struct {
     int layout;                    /* LAYOUT_ROW / LAYOUT_GRID, saved in config/loader.json */
     uint32_t accent;               /* focus colour, 0xRRGGBB, saved there too */
     int accent_hue;                /* the custom row's hue, 0-359 */
-    bool backdrops;                /* game art behind Cinematic and the details; saved there too */
     int sel;                       /* focused item on the current screen */
     int game;                      /* game of the detail page / per-game controls */
     bool menu_open;                /* the + menu, over the library */

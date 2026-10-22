@@ -180,11 +180,6 @@ static void cover(int i, const char *dir, const char *name)
     snprintf(g.info[i].cover, sizeof g.info[i].cover, "%s/%s.jpg", dir, name);
 }
 
-static void backdrop(int i, const char *dir, const char *name)
-{
-    snprintf(g.info[i].backdrop, sizeof g.info[i].backdrop, "%s/bd-%s.jpg", dir, name);
-}
-
 /* A 1280x720 screenshot as the Album service hands it over: decoded pixels
  * (here LVGL decodes dir/shot.jpg); black when there is no such file. */
 static void album_shot(const char *dir, uint32_t *px)
@@ -263,7 +258,7 @@ int main(int argc, char **argv)
     g.capture = -1;
     g.accent = 0xff5fa8;
     g.accent_hue = 330;
-    g.sd_ok = g.full_memory = g.pad_connected = g.runtime_found = g.backdrops = true;
+    g.sd_ok = g.full_memory = g.pad_connected = g.runtime_found = true;
     g.global_load = RSL_LOAD_OK;
     g.applet_type = "Application (full memory)";
     g.mode = "Handheld";
@@ -300,13 +295,6 @@ int main(int argc, char **argv)
     cover(add("tutorial", "Ren'Py Tutorial", "8.5.3.26051504", "renpy-8.5.3"), covers, "tutorial-main_menu");
     add("neon-rain", "Neon Rain Detective", "8.1.3", "renpy-8.5.3");
 
-    static const char *const art[] = { "the_question-main_menu", "the_question-bguni", NULL,
-                                       NULL, "the_question-bglecturehall", "tutorial-bgcave", NULL, NULL,
-                                       NULL, "tutorial-bgwashington", "tutorial-main_menu" };
-    for (int k = 0; k < (int)(sizeof art / sizeof art[0]); k++)
-        if (art[k])
-            backdrop(k, covers, art[k]);
-
     rsl_log("rpynx 0.1.0, Application (full memory), Handheld");
     rsl_log("heap audit (loader start): 0 leaked blocks");
     rsl_log("controller config: loaded");
@@ -331,17 +319,6 @@ int main(int argc, char **argv)
     settle();
     shot(out, "1d-library-row-blue");
     g.accent = 0xff5fa8;
-    g.layout = LAYOUT_CINEMA;
-    settle();
-    shot(out, "1e-library-cinematic");
-    g.sel = 4;
-    settle();
-    shot(out, "1f-library-cinematic-moved");
-    g.sel = 2;   /* a cover but no menu art: a glow in the cover's colour */
-    settle();
-    shot(out, "1g-library-cinematic-no-art");
-    g.sel = 0;
-    g.layout = LAYOUT_ROW;
     g.menu_open = true;
     g.menu_sel = MENU_LAYOUT;
     settle();
@@ -371,10 +348,7 @@ int main(int argc, char **argv)
     settle();
     g.screen = SCR_DETAIL;
     g.game = 4;
-    g.backdrops = false;   /* Layout page: background off */
     settle();
-    shot(out, "3d-detail-no-background");
-    g.backdrops = true;
     tap(1112, 611, RSL_ACT_CONFIRM, DETAIL_LAUNCH);   /* the Launch button */
     tap(1200, 688, RSL_ACT_BACK, -1);                 /* the "B Back" hint */
 
@@ -401,17 +375,11 @@ int main(int argc, char **argv)
         fprintf(stderr, "drag on the screenshot: frame at %d, expected %d\n", drag, 300 - 240);
         failures++;
     }
-    g.menu_open = true;
-    g.menu_sel = USE_BOTH;
-    settle();
-    shot(out, "13b-picture-use");
-    g.menu_open = false;
     picture_part(covers, "cover.bmp", g.crop_x, 480, 300, 450, g.info[3].cover, sizeof g.info[3].cover);
-    picture_part(covers, "backdrop.bmp", 0, 1280, 640, 360, g.info[3].backdrop, sizeof g.info[3].backdrop);
     ui_art_changed(3);
     g.screen = SCR_DETAIL;
     g.sel = DETAIL_PICTURE;
-    snprintf(g.status, sizeof g.status, "Cover and background saved for %s.", g.info[3].title);
+    snprintf(g.status, sizeof g.status, "Cover saved for %s.", g.info[3].title);
     g.status_kind = ST_OK;
     settle();
     shot(out, "13c-detail-picture-saved");

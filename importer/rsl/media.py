@@ -1,5 +1,5 @@
 """What would load the Switch: image sizes, video probing (ffprobe), --optimize re-encoding,
-and the cover and backdrop the loader shows."""
+and the cover the loader shows."""
 import io
 import json
 import os
@@ -190,9 +190,9 @@ def reencode(source, target, codec):
     return None
 
 
-# The loader's pictures (docs/LOADER_UI.md "Covers"): baseline JPEGs of these sizes, next
-# to game/, named by the manifest's "cover" and "backdrop".
-ART = {"cover": (300, 450), "backdrop": (640, 360)}
+# The loader's cover (docs/LOADER_UI.md "Covers"): a baseline JPEG of this size, next
+# to game/, named by the manifest's "cover".
+ART = {"cover": (300, 450)}
 MENU_ART = "gui/main_menu.png"     # Ren'Py's template default for gui.main_menu_background
 
 
@@ -238,15 +238,15 @@ def menu_art(gamedir, files, workdir):
     return None
 
 
-def make_art(manifest, gamedir, files, workdir, cover=None, backdrop=None):
-    """The cover and backdrop that export() writes next to game/, made in workdir.
-    cover and backdrop are pictures the user chose (marked "<key>_custom" in the manifest,
-    which --replace keeps); the rest come from the game's menu art. Names them in the
-    manifest and returns {key: path}. A chosen picture that cannot be converted is
-    refused; the game's own is a warning, and without one the loader shows a placeholder."""
-    chosen = {"cover": cover, "backdrop": backdrop}
+def make_art(manifest, gamedir, files, workdir, cover=None):
+    """The cover that export() writes next to game/, made in workdir. cover is a picture
+    the user chose (marked "cover_custom" in the manifest, which --replace keeps); without
+    one it comes from the game's menu art. Names it in the manifest and returns
+    {key: path}. A chosen picture that cannot be converted is refused; the game's own is a
+    warning, and without one the loader shows a placeholder."""
+    chosen = {"cover": cover}
     os.makedirs(os.path.join(workdir, "art"), exist_ok=True)
-    menu = None if cover and backdrop else menu_art(gamedir, files, workdir)
+    menu = None if cover else menu_art(gamedir, files, workdir)
     art, failed = {}, {}
     for key, size in ART.items():
         source = chosen[key] or (menu and menu[1])

@@ -131,8 +131,8 @@ class Api:
         return {key: file_url(path) for key, path in self._art.items()}
 
     def choose_art(self, key, image):
-        """The analysed game's cover or backdrop ("cover", "backdrop") from a picture the
-        user chose; used by the next export."""
+        """The analysed game's cover from a picture the user chose; used by the next
+        export."""
         if not self._loaded:
             return {"error": "Analyze a game first."}
         m = self._loaded[0]
@@ -147,14 +147,14 @@ class Api:
         return {"manifest": m, "report": imp.report(m), "art": self._previews()}
 
     def art(self, sd, game_id):
-        """The cover and backdrop of a game on the target, as pictures for the page."""
+        """The cover of a game on the target, as a picture for the page."""
         try:
             return {key: data_url(*found) for key, found in imp.read_art(sd, game_id).items()}
         except imp.ERRORS as e:
             return {"error": str(e)}
 
     def set_art(self, sd, game_id, key, image):
-        """A new cover or backdrop for a game already on the target; returns its pictures."""
+        """A new cover for a game already on the target; returns its pictures."""
         try:
             imp.set_art(sd, game_id, key, image)
         except imp.ERRORS as e:

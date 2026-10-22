@@ -84,10 +84,6 @@ void build_detail(lv_obj_t *s)
                                           "exported game folder." : gi->problem;
     char buf[300];
 
-    if (g.backdrops) {
-        backdrop_under(s);
-        render_backdrop(i);
-    }
     lv_obj_t *c = cover(s, i, BIG_COVER_W, BIG_COVER_H, detail_cover(i));
     lv_obj_set_style_clip_corner(c, true, 0);   /* the backdrop shows around the corners */
     lv_obj_set_pos(c, MARGIN, BODY_Y);

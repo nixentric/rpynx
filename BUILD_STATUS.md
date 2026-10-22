@@ -12,7 +12,7 @@ Last updated: 2026-10-23
 | 4 Ren'Py engine | Ren'Py 8.5.3 builds, links and runs on a Switch: The Question (run 5), and Forbidden Fantasy, a Ren'Py 7 game recompiled on the console (run 13). Quit returns to the loader (run 7); three games in a row run in one process (run 12). The controller bridge passes 26/26 desktop checks against the official engine. Music and sound play, also from an `.rpa` ([run 21](tests/hardware/results/2026-10-21-run21.md)). Saves, suspend and touch: see Milestone 6. Applet mode crashed the whole console (runs 8 and 26), so games are refused there (loader and runtime) |
 | 5 Importer | macOS importer: folder/ZIP/7z/RAR → compatibility report, `manifest.json`, SD export. Host-tested (25 tests). Its export of The Question launched on a Switch (run 9) |
 | 6 Gameplay reliability | **Done** (run 27). Verified on a Switch: quitting and starting another game no longer crashes (a stuck Ren'Py audio decode thread, runs 22–24); a game error shows the system error dialog and returns to the library (run 25); sleep and resume (runs 23–24); website links and folder buttons show a notice instead of failing (run 25); the D-pad reaches buttons whose boxes overlap (run 25); The Question's preferences with the SDK fonts (run 25). Desktop-tested only: game menus start on their side menu; no cursor after touch. Also verified (run 26): a remap used in a game (`input: confirm (X)`), save/load back to the same line (`script.rpy:72`), a custom screen to Done, HOME. The in-game emergency combo saves the defaults for the loader too, and games are refused in applet mode, the loader started from the Album, which crashed the whole console in runs 8 and 26 ([run 27](tests/hardware/results/2026-10-21-run27.md)). Still desktop-only: no cursor after touch; the full refusal text (status buffer fixed after run 27) |
-| 7 Game library | The LVGL loader ran on a Switch (first hardware test, 2026-10-22): first frame 80 ms after start, cores at 1 % when idle, SoC 36-38 °C, frames 11-17 ms. The user's review led to a second round (fonts measured so nothing is cut off, centred icons, bigger covers, a controller-shaped test screen, layout and accent pages, an illustrated How to play), built with 0 warnings (`.nro` 731 KB) and pushed for the second hardware test. Covers and backgrounds (2026-10-22): the importer makes them (menu art, or a picture chosen with `--cover`/`--backdrop` or in the desktop window), and *Change picture* on the Switch turns an Album screenshot into either; tested on the host, then on a Switch in [run 28](tests/hardware/results/2026-10-23-run28.md) (2026-10-23): covers and the placeholder, the three layouts, the details page, the picture page and *Use for both*, and a game launched and quit, all PASS; open: labels cut off on four screens, first frame 130-132 ms against 80 ms, and the touch drag, B from Layout and a game without a manifest not run (`.nro` 786 KB) |
+| 7 Game library | The LVGL loader ran on a Switch (first hardware test, 2026-10-22): first frame 80 ms after start, cores at 1 % when idle, SoC 36-38 °C, frames 11-17 ms. The user's review led to a second round (fonts measured so nothing is cut off, centred icons, bigger covers, a controller-shaped test screen, layout and accent pages, an illustrated How to play), built with 0 warnings (`.nro` 731 KB) and pushed for the second hardware test. Covers (2026-10-22): the importer makes them (menu art, or a picture chosen with `--cover` or in the desktop window), and *Change picture* on the Switch turns an Album screenshot into one; tested on the host, then on a Switch in [run 28](tests/hardware/results/2026-10-23-run28.md) (2026-10-23): covers and the placeholder, the layouts, the details page, the picture page and a saved cover, and a game launched and quit, all PASS. After that run the user dropped the Cinematic layout and every picture behind the UI: on the console, animating over a full-screen picture costs 22-35 ms a frame against 11-17 ms, and they did not want to pay it. The Row layout took Cinematic's shape (covers along the bottom, the game named above them), so the library now has Row and Grid (`.nro` 786 KB) |
 | Transfer (planned: after 7, before 8) | Built-in FTP server in the loader (the desktop importer's FTP client exists already), then USB transfer (libnx `usbComms` on the Switch, libusb on the desktop; tens of MB/s against ~1–2 MB/s over Wi-Fi). MTP is not planned: macOS has no MTP support, and an MTP responder such as haze is GPL, which would make the MIT loader GPL |
 | 8 Release validation | Not started |
 
@@ -30,7 +30,7 @@ are still unverified on hardware. See
 **Loader (`renpy-loader.nro`)**
 - Graphical UI with LVGL 9.6 (`app/ui/ui.c`, `docs/LOADER_UI.md`), drawn on the CPU into the
   libnx framebuffer, only when something changed:
-  - library in three layouts (Row, Grid, Cinematic), game details, + menu, applet-mode notice,
+  - library in two layouts (Row, Grid), game details, + menu, applet-mode notice,
     controller settings, controller test, diagnostics, how to play (shown on the first start);
   - OLED dark theme, pink or blue accent; the console's own font and button icons;
   - settings in `config/loader.json`;
@@ -130,7 +130,7 @@ are still unverified on hardware. See
 | Runtime build | success, 0 warnings, static link with no unresolved symbols |
 | Ren'Py build | `scripts/build.sh renpy`: 60 modules / 73 objects in `librenpy.a`; 169 engine modules staged; 63 SDK common scripts digest-verified |
 | `dist/renpy-runtime.nro` | 61,535,482 bytes, sha256 `88c91423e7752b3e17e174fd2713ac13ef4c2dcf6fd1e3a9f8355e93751b831b` (runtime split, rpynx titles) |
-| `dist/renpy-loader.nro` | 785,926 bytes, sha256 `552993241ed7a0efc3a35438695f385663035419f769ff803481593e47325c7a` (LVGL loader, covers, Change picture, rpynx titles, run 28's label fixes; run 28 itself tested `19c2f0ed…`) |
+| `dist/renpy-loader.nro` | 781,830 bytes, sha256 `307d79e79631eabafb67eb19f245621eb04b0701c6eb9924503ae4a21c36af3d` (LVGL loader, covers, Change picture, rpynx titles, run 28's label fixes, no Cinematic and no pictures behind the UI; run 28 itself tested `19c2f0ed…`) |
 | Reproducibility | loader: identical across two clean builds. Milestone 3 runtime: identical across two full rebuilds. Not re-checked for the Ren'Py runtime |
 | libnx layout check | `_Static_assert`s in `input_switch.c` pass |
 
@@ -219,12 +219,13 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H50.
 
 - Labels were cut off instead of wrapping on two screens (run 28): a how to play row and the
   side menu's subtitles, both content-width inside a fixed-width parent. Fixed in the loader
-  (`ui_pages.c`, `ui_library.c`), checked on the host with a wider font than the console's,
-  not yet seen on the console.
+  (`ui_pages.c`, `ui_library.c`), checked on the host with a wider font than the console's, and
+  confirmed on the console on 2026-10-23 (run 28, second session). `tests/ui/mockups.c` now
+  fails when a wrapping label runs past its parent.
 - The loader's first frame takes 130-132 ms, against 80 ms in the first LVGL test on 2026-10-22
   (run 28, the same on three starts). Not explained.
 - Still unverified on hardware (run 28): the touch drag of the cover frame, B from the Layout
-  page, a game without a `manifest.json`, holding a direction in Cinematic, docked mode.
+  page, a game without a `manifest.json`, docked mode.
 - The in-game loader overlay is not built; L-stick press only shows a notice.
 - Live2D and 3D models are unsupported.
 - Non-ASCII file names on the SD card (run 20): about half of Japanese names cannot be created,

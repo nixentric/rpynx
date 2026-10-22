@@ -31,23 +31,21 @@ void load_settings(void)
     const char *layout = cJSON_GetStringValue(cJSON_GetObjectItem(j, "library_layout"));
     const char *accent = cJSON_GetStringValue(cJSON_GetObjectItem(j, "accent"));
     cJSON *hue = cJSON_GetObjectItem(j, "accent_hue");
-    g.layout = layout && !strcmp(layout, "grid") ? LAYOUT_GRID :
-               layout && !strcmp(layout, "cinematic") ? LAYOUT_CINEMA : LAYOUT_ROW;
+    g.layout = layout && !strcmp(layout, "grid") ? LAYOUT_GRID : LAYOUT_ROW;
     g.accent = accent && accent[0] == '#' ? (uint32_t)strtoul(accent + 1, NULL, 16) & 0xffffff :
                accent && !strcmp(accent, "blue") ? 0x25d0f2 : DEFAULT_ACCENT;
     g.accent_hue = cJSON_IsNumber(hue) ? ((int)hue->valuedouble % 360 + 360) % 360 : DEFAULT_HUE;
-    g.backdrops = !cJSON_IsFalse(cJSON_GetObjectItem(j, "backgrounds"));
     m.help_seen = cJSON_IsTrue(cJSON_GetObjectItem(j, "help_seen"));
     cJSON_Delete(j);
 }
 
 void save_settings(void)
 {
-    static const char *const layouts[] = { "row", "grid", "cinematic" };
+    static const char *const layouts[] = { "row", "grid" };
     char text[240], err[128];
-    int n = snprintf(text, sizeof text, "{\n  \"library_layout\": \"%s\",\n  \"backgrounds\": %s,\n"
+    int n = snprintf(text, sizeof text, "{\n  \"library_layout\": \"%s\",\n"
                      "  \"accent\": \"#%06x\",\n  \"accent_hue\": %d,\n  \"help_seen\": %s\n}\n",
-                     layouts[g.layout], g.backdrops ? "true" : "false", (unsigned)g.accent, g.accent_hue,
+                     layouts[g.layout], (unsigned)g.accent, g.accent_hue,
                      m.help_seen ? "true" : "false");
     if (!rsl_write_atomic(LOADER_CFG, text, (size_t)n, err, sizeof err))
         status(ST_BAD, "Settings not saved: %s", err);
@@ -92,8 +90,6 @@ static void read_manifest(const char *game, struct game_info *gi)
         snprintf(gi->renpy, sizeof gi->renpy, "%s", version ? version : "?");
         snprintf(gi->state, sizeof gi->state, "%s", state ? state : "?");
         game_file(gi->cover, sizeof gi->cover, game, cJSON_GetStringValue(cJSON_GetObjectItem(j, "cover")));
-        game_file(gi->backdrop, sizeof gi->backdrop, game,
-                  cJSON_GetStringValue(cJSON_GetObjectItem(j, "backdrop")));
         gi->recompile = cJSON_IsTrue(cJSON_GetObjectItem(j, "recompile"));
         cJSON *issues = cJSON_GetObjectItem(cJSON_GetObjectItem(j, "performance"), "issues");
         gi->issues = cJSON_GetArraySize(issues);

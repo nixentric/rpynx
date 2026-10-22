@@ -1,4 +1,4 @@
-/* The library in its three layouts (Row, Grid, Cinematic) and the + menu,
+/* The library in its two layouts (Row, Grid) and the + menu,
  * whose sliding panel the picture page reuses. */
 #include "ui_internal.h"
 
@@ -80,8 +80,7 @@ void side_menu(lv_obj_t *s, const char *title, const char *const (*text)[2], int
 static void build_menu(lv_obj_t *s)
 {
     char sub[80];
-    snprintf(sub, sizeof sub, "%s, %s, background %s", layout_name[g.layout], accent_name(),
-             g.backdrops ? "on" : "off");
+    snprintf(sub, sizeof sub, "%s, %s", layout_name[g.layout], accent_name());
     side_menu(s, "Menu", menu_text, MENU_COUNT, MENU_LAYOUT, sub);
 }
 
@@ -120,7 +119,7 @@ void status_pill(lv_obj_t *parent, const struct game_info *gi)
         pill(parent, RED, !strcmp(gi->state, "unsupported") ? "Unsupported" : gi->state);
 }
 
-/* Row and Cinematic layouts: what the focused game is. Rebuilt when the
+/* Row layout: what the focused game is. Rebuilt when the
  * focus moves, never on other frames. */
 void row_info(void)
 {
@@ -129,8 +128,7 @@ void row_info(void)
     char buf[200];
     u.info_sel = i;
     lv_obj_clean(u.info);
-    lv_obj_t *t = g.layout == LAYOUT_CINEMA ? label(u.info, f_hero, TEXT, title_of(i))
-                                            : label(u.info, f_xl, ACCENT, title_of(i));
+    lv_obj_t *t = label(u.info, f_hero, TEXT, title_of(i));
     lv_obj_set_width(t, lv_pct(100));
     lv_label_set_long_mode(t, LV_LABEL_LONG_MODE_DOTS);
     lv_obj_t *meta = flex(u.info, LV_FLEX_FLOW_ROW, 10);
@@ -181,20 +179,11 @@ static void build_row(lv_obj_t *s, int y, lv_style_t *grow)
     lv_obj_set_width(u.info, W - 2 * MARGIN);
 }
 
-static void build_cinema(lv_obj_t *s)
-{
-    if (g.backdrops)
-        backdrop_under(s);
-    build_row(s, H - FOOTER_H - COVER_H - 2 * ROW_ROOM, &st_grow);
-    lv_obj_set_pos(u.info, MARGIN, HEADER_H + 16);
-    lv_obj_set_width(u.info, 760);
-}
-
 void build_library(lv_obj_t *s)
 {
     char buf[32];
     snprintf(buf, sizeof buf, g.game_count == 1 ? "%d game" : "%d games", g.game_count);
-    if (g.layout != LAYOUT_CINEMA || !g.game_count)
+    if (g.layout != LAYOUT_ROW || !g.game_count)
         label(u.head, f_m, DIM, buf);
     pill(u.chips, DIM, g.mode);
     if (!g.full_memory)
@@ -216,10 +205,10 @@ void build_library(lv_obj_t *s)
         lv_obj_set_style_text_line_space(t, 8, 0);
         lv_obj_align(col, LV_ALIGN_CENTER, 0, 0);
     } else if (g.layout == LAYOUT_ROW) {
-        build_row(s, ROW_Y, &st_grow_row);
-        lv_obj_set_pos(u.info, MARGIN, ROW_Y + COVER_H + 2 * ROW_ROOM + 8);
-    } else if (g.layout == LAYOUT_CINEMA) {
-        build_cinema(s);
+        /* One line of covers along the bottom, the focused game named above them. */
+        build_row(s, H - FOOTER_H - COVER_H - 2 * ROW_ROOM, &st_grow_row);
+        lv_obj_set_pos(u.info, MARGIN, HEADER_H + 16);
+        lv_obj_set_width(u.info, 760);
     } else {
         build_grid(s, y);
     }

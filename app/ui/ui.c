@@ -56,7 +56,7 @@ const char *const action_label[RSL_ACT_COUNT] = {
 
 const char *const preset_label[RSL_PRESET_COUNT] = { "Default", "Left-handed", "One-handed (right)" };
 
-const char *const layout_name[LAYOUT_COUNT] = { "Row", "Grid", "Cinematic" };
+const char *const layout_name[LAYOUT_COUNT] = { "Row", "Grid" };
 
 static void focus(lv_obj_t **items, int n, int *cur, int sel, bool anim)
 {
@@ -163,11 +163,11 @@ static void build(void)
     if (u.screen == SCR_PICTURE && u.backdrop)   /* its pixels are freed as the page is left; */
         lv_image_set_src(u.backdrop, NULL);      /* the page still shows during the fade */
     memset(&u, 0, sizeof u);
-    u.focused = u.menu_focused = u.dialog_focused = u.info_sel = u.backdrop_sel = u.sel_seen = -1;
+    u.focused = u.menu_focused = u.dialog_focused = u.info_sel = -1;
     if (g.screen == SCR_LIBRARY && !g.game_count)
         s = screen(titles[0], HINTS(empty_hints));
     else
-        s = screen(g.screen == SCR_LIBRARY && g.layout == LAYOUT_CINEMA ? NULL : titles[g.screen],
+        s = screen(g.screen == SCR_LIBRARY && g.layout == LAYOUT_ROW ? NULL : titles[g.screen],
                    footer[g.screen].h, footer[g.screen].n);
     switch (g.screen) {
     case SCR_LIBRARY: build_library(s); break;
@@ -190,7 +190,7 @@ static void build(void)
     u.layout = g.layout;
     u.accent = g.accent;
     u.fresh = true;
-    lv_screen_load_anim(s, LV_SCREEN_LOAD_ANIM_FADE_IN, first ? 0 : 150, 0, true);
+    lv_screen_load_anim(s, LV_SCREEN_LOAD_ANIM_FADE_IN, first ? 0 : SCREEN_FADE_MS, 0, true);
 }
 
 /* The status line: the last message from main.c, coloured by kind, or the
@@ -231,13 +231,6 @@ void ui_update(void)
         load_next_thumb();
         if (u.info && u.info_sel != g.sel && g.sel >= 0 && g.sel < g.game_count)
             row_info();
-        if (u.backdrop && g.sel != u.sel_seen) {
-            u.sel_seen = g.sel;
-            u.sel_at = g.now;
-        }
-        if (u.backdrop && u.backdrop_sel != g.sel && g.now - u.sel_at >= 150 && g.sel >= 0 &&
-            g.sel < g.game_count)
-            render_backdrop(g.sel);
         break;
     case SCR_REMAP: update_remap(); break;
     case SCR_TEST: update_test(); break;

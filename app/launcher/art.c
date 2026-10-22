@@ -23,8 +23,6 @@
 #define CROP_STEP  80
 #define COVER_OUT_W 300      /* the importer's sizes (docs/LOADER_UI.md) */
 #define COVER_OUT_H 450
-#define BACK_OUT_W 640
-#define BACK_OUT_H 360
 
 static CapsAlbumEntry *shots;   /* the Album's screenshots, newest first */
 static int loaded = -1;         /* index in g.shot, -1 for none */
@@ -163,12 +161,10 @@ static bool save_bmp(int i, const char *key, int x, int w, int h, int ow, int oh
     return ok;
 }
 
-/* "cover": "cover.bmp", "cover_custom": true (and the same for the
- * backdrop) in the game's manifest.json; the rest stays as the importer
- * wrote it. */
-static bool name_in_manifest(int i, int use, char *err, size_t errlen)
+/* "cover": "cover.bmp", "cover_custom": true in the game's
+ * manifest.json; the rest stays as the importer wrote it. */
+static bool name_in_manifest(int i, char *err, size_t errlen)
 {
-    static const char *const keys[2] = { "cover", "backdrop" };
     char path[256], name[24];
     snprintf(path, sizeof path, GAMES_DIR "/%s/manifest.json", g.games[i]);
     char *text = rsl_read_file(path, 1 << 20, NULL, err, errlen);
@@ -178,16 +174,11 @@ static bool name_in_manifest(int i, int use, char *err, size_t errlen)
         snprintf(err, errlen, "manifest.json is unreadable");
     free(text);
     if (cJSON_IsObject(j)) {
-        for (int k = 0; k < 2; k++) {
-            if (use == (k ? USE_COVER : USE_BACKDROP))
-                continue;
-            snprintf(name, sizeof name, "%s.bmp", keys[k]);
-            cJSON_DeleteItemFromObject(j, keys[k]);
-            cJSON_AddStringToObject(j, keys[k], name);
-            snprintf(name, sizeof name, "%s_custom", keys[k]);
-            cJSON_DeleteItemFromObject(j, name);
-            cJSON_AddTrueToObject(j, name);
-        }
+        snprintf(name, sizeof name, "cover.bmp");
+        cJSON_DeleteItemFromObject(j, "cover");
+        cJSON_AddStringToObject(j, "cover", name);
+        cJSON_DeleteItemFromObject(j, "cover_custom");
+        cJSON_AddTrueToObject(j, "cover_custom");
         char *out = cJSON_Print(j);
         ok = out && rsl_write_atomic(path, out, strlen(out), err, errlen);
         if (!out)
@@ -198,50 +189,29 @@ static bool name_in_manifest(int i, int use, char *err, size_t errlen)
     return ok;
 }
 
-/* The pictures first, then the manifest: if that fails, the game keeps the
- * pictures it had. */
-static void use_picture(int use)
+/* The picture first, then the manifest: if that fails, the game keeps the
+ * cover it had. */
+static void use_picture(void)
 {
-    static const char *const what[USE_COUNT] = { "Cover", "Background", "Cover and background" };
     int i = g.game;
     char err[128] = "";
-    bool ok = (use == USE_BACKDROP ||
-               save_bmp(i, "cover", g.crop_x, CROP_W, SHOT_H, COVER_OUT_W, COVER_OUT_H, err, sizeof err)) &&
-              (use == USE_COVER ||
-               save_bmp(i, "backdrop", 0, SHOT_W, SHOT_H, BACK_OUT_W, BACK_OUT_H, err, sizeof err)) &&
-              name_in_manifest(i, use, err, sizeof err);
-    if (!ok) {
-        g.menu_open = false;
+    if (!save_bmp(i, "cover", g.crop_x, CROP_W, SHOT_H, COVER_OUT_W, COVER_OUT_H, err, sizeof err) ||
+        !name_in_manifest(i, err, sizeof err)) {
         status(ST_BAD, "Picture not saved: %s", err);
         return;
     }
     char path[sizeof g.info[i].cover];
-    for (int k = 0; k < 2; k++) {
-        if (use == (k ? USE_COVER : USE_BACKDROP))
-            continue;
-        snprintf(path, sizeof path, GAMES_DIR "/%s/%s.bmp", g.games[i], k ? "backdrop" : "cover");
-        strcpy(k ? g.info[i].backdrop : g.info[i].cover, path);
-    }
+    snprintf(path, sizeof path, GAMES_DIR "/%s/cover.bmp", g.games[i]);
+    strcpy(g.info[i].cover, path);
     ui_art_changed(i);
     back_to_details();
-    status(ST_OK, "%s saved for %s.", what[use], title(i));
+    status(ST_OK, "Cover saved for %s.", title(i));
 }
 
-/* Left/right: newer/older screenshot. L/R: move the cover's frame. Confirm:
- * the choice (cover, background or both), up/down in it. */
+/* Left/right: newer/older screenshot. L/R: move the cover's frame.
+ * Confirm: the framed part becomes the game's cover. */
 void picture_action(rsl_action a)
 {
-    if (g.menu_open) {
-        if (a == RSL_ACT_UP)
-            g.menu_sel = (g.menu_sel + USE_COUNT - 1) % USE_COUNT;
-        else if (a == RSL_ACT_DOWN)
-            g.menu_sel = (g.menu_sel + 1) % USE_COUNT;
-        else if (a == RSL_ACT_BACK)
-            g.menu_open = false;
-        else if (a == RSL_ACT_CONFIRM)
-            use_picture(g.menu_sel);
-        return;
-    }
     switch (a) {
     case RSL_ACT_LEFT:
         if (g.sel > 0)
@@ -258,10 +228,8 @@ void picture_action(rsl_action a)
         g.crop_x = g.crop_x + CROP_STEP < SHOT_W - CROP_W ? g.crop_x + CROP_STEP : SHOT_W - CROP_W;
         break;
     case RSL_ACT_CONFIRM:
-        if (loaded == g.sel && loaded_ok) {
-            g.menu_open = true;
-            g.menu_sel = USE_COVER;
-        }
+        if (loaded == g.sel && loaded_ok)
+            use_picture();
         break;
     case RSL_ACT_BACK:
         back_to_details();

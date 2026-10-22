@@ -45,10 +45,8 @@ def main(argv=None):
                     help="Python 3.10+ interpreter that has rpycdec installed; default: rpycdec on PATH")
     ap.add_argument("--cover", metavar="IMAGE",
                     help="the game's cover in the loader, any picture FFmpeg reads (a 2:3 poster suits it "
-                         "best; other shapes are cut from the middle); default: the middle of its menu art")
-    ap.add_argument("--backdrop", metavar="IMAGE",
-                    help="the picture behind the loader's detail page and Cinematic layout (16:9); "
-                         "default: the game's menu art. --replace keeps a cover or backdrop chosen before")
+                         "best; other shapes are cut from the middle); default: the middle of its menu art. "
+                         "--replace keeps a cover chosen before")
     ap.add_argument("--tools", metavar="DIR", help="folder with ffmpeg/ffprobe or 7z, if they are not on PATH")
     a = ap.parse_args(argv)
     if a.id is not None and make_id(a.id) != a.id:
@@ -72,7 +70,7 @@ def main(argv=None):
         decompile = (a.decompiler or DECOMPILERS[0]) if a.decompile else None
         manifest, gamedir, files, extra = load(a.source, tmp, a.id, a.recompile, a.optimize, decompile,
                                                a.rpycdec_python)
-        art = make_art(manifest, gamedir, files, tmp, a.cover, a.backdrop)
+        art = make_art(manifest, gamedir, files, tmp, a.cover)
         print(report(manifest), flush=True)
         if a.out:
             print("Exported to %s" % export(manifest, gamedir, files, a.out, a.replace, extra, show, art))

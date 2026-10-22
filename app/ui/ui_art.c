@@ -9,7 +9,6 @@ static lv_obj_t *canvas;                 /* hidden; draws covers into their buff
 lv_draw_buf_t *thumb[MAX_GAMES];  /* grid covers; games are scanned once at start */
 static bool thumb_tried[MAX_GAMES];
 static lv_draw_buf_t *big;               /* detail page cover */
-static lv_draw_buf_t *backdrop;          /* Cinematic layout, full screen, made on first use */
 
 const char *title_of(int i)
 {
@@ -33,7 +32,7 @@ void paint(lv_draw_buf_t *dst, const void *src, int32_t scale, const lv_area_t *
 /* Round buf's corners (ARGB8888): what lies outside a RADIUS arc turns
  * transparent, the arc's edge partly (4x4 samples a pixel). Baked in black
  * instead, the corners hid the middle of a focused cover's outline arc, which
- * passes inside the cover's square, and showed as black over the Cinematic art. */
+ * passes inside the cover's square, and showed as black over the art. */
 static void round_corners(lv_draw_buf_t *buf)
 {
     int32_t w = buf->header.w, h = buf->header.h, r8 = RADIUS * 8;
@@ -178,96 +177,6 @@ void load_next_thumb(void)
     }
 }
 
-/* The glow behind a game without art: its cover's main colour, darkened.
- * Every 4th pixel of every 4th line goes into one of six hue bins by the
- * order of its channels, weighted by how colourful it is; the fullest bin's
- * average wins (a plain average of sky and brick is grey). A grey cover, or
- * none, gets the placeholder colour. */
-static lv_color_t ambient(int i)
-{
-    const lv_draw_buf_t *b = thumb[i];
-    uint32_t bin[6][4] = { { 0 } }, best = 0;
-    for (uint32_t y = 0; b && y < b->header.h; y += 4) {
-        const lv_color32_t *px = (const lv_color32_t *)(b->data + y * b->header.stride);
-        for (uint32_t x = 0; x < b->header.w; x += 4) {
-            lv_color32_t p = px[x];
-            int hi = LV_MAX(p.red, LV_MAX(p.green, p.blue)), lo = LV_MIN(p.red, LV_MIN(p.green, p.blue));
-            int k = hi == p.red ? (p.green >= p.blue ? 0 : 5) : hi == p.green ? (p.blue >= p.red ? 2 : 1)
-                                                                              : (p.red >= p.green ? 4 : 3);
-            uint32_t w = (uint32_t)(hi - lo);
-            bin[k][0] += p.red * w;
-            bin[k][1] += p.green * w;
-            bin[k][2] += p.blue * w;
-            bin[k][3] += w;
-        }
-    }
-    for (uint32_t k = 1; k < 6; k++)
-        if (bin[k][3] > bin[best][3])
-            best = k;
-    uint32_t *c = bin[best];
-    if (!c[3])
-        return lv_color_mix(lv_color_hex(tint(i)), lv_color_black(), LV_OPA_70);
-    return lv_color_mix(lv_color_make(c[0] / c[3], c[1] / c[3], c[2] / c[3]), lv_color_black(), LV_OPA_60);
-}
-
-/* The full-screen picture behind the Cinematic layout and the detail page:
- * the game's 16:9 menu art (on the detail page else its cover), or a dark
- * glow in its cover's colour, baked into one buffer so that drawing it is a
- * copy. Both darken it under the header and toward the bottom; the
- * Cinematic layout also toward the left, behind the title, and the detail
- * page fades it further. The Cinematic layout redoes it 150 ms after the
- * focus stops moving, so holding a direction does not decode on every step. */
-void render_backdrop(int i)
-{
-    bool detail = g.screen == SCR_DETAIL;
-    lv_layer_t layer;
-    lv_draw_rect_dsc_t shade;
-    lv_color_t black[2] = { lv_color_black(), lv_color_black() };
-    lv_opa_t left[2] = { LV_OPA_80, LV_OPA_TRANSP }, down[2] = { LV_OPA_TRANSP, LV_OPA_COVER },
-             top[2] = { LV_OPA_80, LV_OPA_TRANSP };
-    lv_area_t a = { 0, 0, W - 1, H - 1 };
-    bool art = render_cover(backdrop, g.info[i].backdrop, false) ||
-               (detail && render_cover(backdrop, g.info[i].cover, false));
-    u.backdrop_sel = i;
-    lv_canvas_set_draw_buf(canvas, backdrop);
-    if (!art)
-        lv_canvas_fill_bg(canvas, ambient(i), LV_OPA_COVER);
-    lv_canvas_init_layer(canvas, &layer);
-    lv_draw_rect_dsc_init(&shade);
-    shade.bg_color = lv_color_black();
-    shade.bg_opa = !art ? LV_OPA_TRANSP : detail ? LV_OPA_70 : LV_OPA_50;
-    lv_draw_rect(&layer, &shade, &a);
-    shade.bg_opa = LV_OPA_COVER;
-    if (!detail) {
-        a = (lv_area_t){ 0, 0, W * 2 / 3, H - 1 };
-        lv_grad_init_stops(&shade.bg_grad, black, left, NULL, 2);
-        lv_grad_horizontal_init(&shade.bg_grad);
-        lv_draw_rect(&layer, &shade, &a);
-    }
-    lv_grad_init_stops(&shade.bg_grad, black, top, NULL, 2);
-    lv_grad_vertical_init(&shade.bg_grad);
-    a = (lv_area_t){ 0, 0, W - 1, HEADER_H + 60 };
-    lv_draw_rect(&layer, &shade, &a);
-    lv_grad_init_stops(&shade.bg_grad, black, down, NULL, 2);
-    lv_grad_vertical_init(&shade.bg_grad);
-    a = (lv_area_t){ 0, detail ? H / 3 : H * 2 / 5, W - 1, H - 1 };
-    lv_draw_rect(&layer, &shade, &a);
-    lv_canvas_finish_layer(canvas, &layer);
-    lv_obj_invalidate(u.backdrop);
-}
-
-/* The full-screen picture under everything else on s; render_backdrop fills it. */
-void backdrop_under(lv_obj_t *s)
-{
-    if (!backdrop) {
-        backdrop = lv_draw_buf_create(W, H, LV_COLOR_FORMAT_XRGB8888, 0);
-        lv_draw_buf_clear(backdrop, NULL);
-    }
-    u.backdrop = lv_image_create(s);
-    lv_image_set_src(u.backdrop, backdrop);
-    lv_obj_move_to_index(u.backdrop, 0);
-}
-
 void ui_art_changed(int i)
 {
     if (thumb[i])
@@ -282,8 +191,6 @@ bool ui_idle(void)
         for (int i = 0; i < g.game_count; i++)
             if (!thumb_tried[i])
                 return false;
-        if (u.backdrop && u.backdrop_sel != g.sel)
-            return false;
     }
     return lv_anim_count_running() == 0;
 }

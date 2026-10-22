@@ -18,6 +18,17 @@ lv_style_t st_screen, st_card, st_pill, st_focusable, st_focus, st_grow, st_grow
            st_focus_fill, st_button, st_chip, st_toggle, st_toggle_on, st_title_focus, st_icon_on;
 static lv_style_transition_dsc_t trans;
 
+/* The focus transition: an outline that grows in, the cover that scales up,
+ * the row that fills. */
+static void motion(void)
+{
+    static const lv_style_prop_t props[] = {
+        LV_STYLE_OUTLINE_WIDTH, LV_STYLE_TRANSFORM_SCALE_X, LV_STYLE_TRANSFORM_SCALE_Y,
+        LV_STYLE_BG_OPA, LV_STYLE_BG_COLOR, LV_STYLE_TEXT_COLOR, 0,
+    };
+    lv_style_transition_dsc_init(&trans, props, lv_anim_path_ease_out, FOCUS_FADE_MS, 0, NULL);
+}
+
 const struct accent_preset presets[ACCENT_PRESETS] = {
     { "Pink", 0xff5fa8 }, { "Blue", 0x25d0f2 }, { "Violet", 0xa78bfa }, { "Indigo", 0x818cf8 },
     { "Teal", 0x2dd4bf }, { "Lime", 0xa3e635 }, { "Sky", 0x60a5fa }, { "White", 0xe5e7eb },
@@ -125,11 +136,7 @@ void style_init(const void *ttf, size_t ttf_len, const void *icons, size_t icons
                 utf8(stick_icon[s], stick_cp[s]);
     }
 
-    static const lv_style_prop_t props[] = {
-        LV_STYLE_OUTLINE_WIDTH, LV_STYLE_TRANSFORM_SCALE_X, LV_STYLE_TRANSFORM_SCALE_Y,
-        LV_STYLE_BG_OPA, LV_STYLE_BG_COLOR, LV_STYLE_TEXT_COLOR, 0,
-    };
-    lv_style_transition_dsc_init(&trans, props, lv_anim_path_ease_out, 120, 0, NULL);
+    motion();
 
     lv_style_init(&st_screen);
     lv_style_set_bg_color(&st_screen, lv_color_hex(BG));

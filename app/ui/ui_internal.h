@@ -25,6 +25,10 @@
 #define COVER_H 330
 #define BIG_COVER_W 300      /* detail page; the importer writes covers at this size */
 #define BIG_COVER_H 450
+/* The focus transition and the fade between screens. Keep them short: the
+ * console draws every pixel on the CPU (hardware run 28). */
+#define FOCUS_FADE_MS 120
+#define SCREEN_FADE_MS 150
 #define COVER_MAX_PX (600 * 900)  /* larger JPEGs are not decoded: too slow on the CPU */
 #define GAP 21               /* grid: 5 * 220 + 4 * 21 = 1184, the width between the margins */
 #define ROW_GAP 28           /* row layout: the focused cover grows 12 % into this */
@@ -75,9 +79,8 @@ struct ui_screen {
     bool menu_shown, dialog_shown, status_set;
     char status[sizeof g.status];
     status_kind status_kind;
-    lv_obj_t *covers[MAX_GAMES], *info, *backdrop;                /* library */
-    int backdrop_sel, sel_seen;
-    uint32_t sel_at;
+    lv_obj_t *covers[MAX_GAMES], *info;                           /* library */
+    lv_obj_t *backdrop;                                           /* picture page: the screenshot */
     lv_obj_t *shade[2], *frame, *shot_text;                       /* picture page */
     int crop_drawn;
     unsigned shot_drawn;
@@ -86,9 +89,9 @@ struct ui_screen {
     lv_obj_t *btn[RSL_BTN_NAV_UP], *act[RSL_ACT_COUNT], *dot[2], *stick_val[2], *events, *pad;
     int dot_x[2], dot_y[2];
     lv_obj_t *mem_bar, *mem_text, *log[RSL_LOG_KEEP];             /* diagnostics */
-    lv_obj_t *swatch[ACCENT_PRESETS], *knob, *hue_text, *warn, *bg_value;   /* layout */
+    lv_obj_t *swatch[ACCENT_PRESETS], *knob, *hue_text, *warn;   /* layout */
     uint32_t accent_drawn;
-    int hue_drawn, bg_drawn;
+    int hue_drawn;
 };
 
 /* ui.c: the screen frame, building and updating screens */
@@ -143,8 +146,6 @@ void paint(lv_draw_buf_t *dst, const void *src, int32_t scale, const lv_area_t *
 lv_obj_t *cover(lv_obj_t *parent, int i, int w, int h, lv_draw_buf_t *buf);
 lv_draw_buf_t *detail_cover(int i);
 void load_next_thumb(void);
-void render_backdrop(int i);
-void backdrop_under(lv_obj_t *s);
 void art_init(void);
 
 /* ui_library.c: the library layouts, the + menu */

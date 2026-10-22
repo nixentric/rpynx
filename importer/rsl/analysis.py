@@ -365,7 +365,7 @@ def report(m):
                  m["files"]["count"], m["files"]["total_bytes"] / 1e6, m["files"]["rpa"],
                  m["files"]["rpy"], m["files"]["rpyc"], m["files"]["rpym"]),
              "  Media:   %s" % (", ".join("%s %d" % kv for kv in m["media"].items()) or "none")]
-    pictures = ["%s%s" % (m[k], " (chosen)" if m.get(k + "_custom") else "") for k in ("cover", "backdrop") if m.get(k)]
+    pictures = ["%s%s" % (m[k], " (chosen)" if m.get(k + "_custom") else "") for k in ("cover",) if m.get(k)]
     lines.append("  Pictures: %s" % (", ".join(pictures) or "none; the loader shows a placeholder"))
     for key in ("reasons", "warnings"):
         if m[key]:

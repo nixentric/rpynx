@@ -185,7 +185,7 @@ def exported_games(out):
 
 
 def in_game_folder(name):
-    """A file name a manifest may give its cover or backdrop: inside the game's folder, as
+    """A file name a manifest may give its cover: inside the game's folder, as
     the loader's game_file() checks it."""
     return isinstance(name, str) and 0 < len(name) <= 100 and not name.startswith(("/", "\\")) \
         and ".." not in name and ":" not in name
@@ -203,11 +203,11 @@ def library_game(lib, game_id):
 
 
 def read_art(out, game_id):
-    """{key: (file name, data)} of the cover and backdrop a game in the library has."""
+    """{key: (file name, data)} of the cover a game in the library has."""
     found = {}
     with contextlib.closing(open_library(out)) as lib:
         manifest = library_game(lib, game_id) or {}
-        for key in ("cover", "backdrop"):
+        for key in ("cover",):
             name = manifest.get(key)
             data = lib.read("games/%s/%s" % (game_id, name)) if in_game_folder(name) else None
             if data:

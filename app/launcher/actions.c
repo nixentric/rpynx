@@ -77,7 +77,7 @@ static void menu_action(rsl_action a)
     }
 }
 
-/* Row and Cinematic: one line, left/right. Grid: COLS per row. Both stop at
+/* Row: one line, left/right. Grid: COLS per row. Both stop at
  * their edges. */
 static void library_action(rsl_action a)
 {
@@ -134,9 +134,6 @@ static void layout_action(rsl_action a)
             g.accent_hue = (g.accent_hue + (a == RSL_ACT_LEFT ? 350 : 10)) % 360;
             g.accent = ui_hue_color(g.accent_hue);
             m.accent_dirty = true;
-        } else if (s == SET_BACKDROP) {
-            g.backdrops = !g.backdrops;
-            save_settings();
         } else if (a == RSL_ACT_LEFT && s != 0 && s != SET_PRESET) {
             g.sel--;
         } else if (a == RSL_ACT_RIGHT && s != LAYOUT_COUNT - 1 && s != SET_CUSTOM - 1) {
@@ -144,16 +141,14 @@ static void layout_action(rsl_action a)
         }
         break;
     case RSL_ACT_UP:
-        g.sel = s == SET_CUSTOM ? m.accent_col : preset ? SET_BACKDROP : s == SET_BACKDROP ? m.layout_col : s;
+        g.sel = s == SET_CUSTOM ? m.accent_col : preset ? m.layout_col : s;
         break;
     case RSL_ACT_DOWN:
-        g.sel = layout ? SET_BACKDROP : s == SET_BACKDROP ? m.accent_col : preset ? SET_CUSTOM : s;
+        g.sel = layout ? m.accent_col : preset ? SET_CUSTOM : s;
         break;
     case RSL_ACT_CONFIRM:
         if (layout) {
             g.layout = s;
-        } else if (s == SET_BACKDROP) {
-            g.backdrops = !g.backdrops;
         } else if (preset) {
             ui_accent_preset(s - SET_PRESET, &rgb, &name);
             g.accent = rgb;

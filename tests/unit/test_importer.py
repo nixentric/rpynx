@@ -563,7 +563,7 @@ class ImporterTest(unittest.TestCase):
         self.assertIn("1 of them come from archives", stdout)
 
     @unittest.skipUnless(HAVE_FFMPEG, "FFmpeg not installed")
-    def test_cover_and_backdrop(self):
+    def test_cover(self):
         src = make_game(self.path("FakeQuest"))
         game = os.path.join(src, "game")
         write(os.path.join(game, "gui.rpy"), 'define gui.main_menu_background = "images/Title.png"  # art\n')
@@ -575,36 +575,34 @@ class ImporterTest(unittest.TestCase):
 
         code, stdout, err = self.run_cli(src, "--out", out)
         self.assertEqual(code, 0, err)
-        self.assertIn("Pictures: cover.jpg, backdrop.jpg", stdout)
-        self.assertEqual(sorted(os.listdir(dest)), ["backdrop.jpg", "cover.jpg", "game", "manifest.json"])
+        self.assertIn("Pictures: cover.jpg", stdout)
+        self.assertEqual(sorted(os.listdir(dest)), ["cover.jpg", "game", "manifest.json"])
         loader_jpeg(self, os.path.join(dest, "cover.jpg"), (300, 450))
-        loader_jpeg(self, os.path.join(dest, "backdrop.jpg"), (640, 360))
         self.assertGreater(colour(os.path.join(dest, "cover.jpg"))[0], 200, "from images/title.png")
         with open(os.path.join(dest, "manifest.json"), encoding="utf-8") as f:
             m = json.load(f)
-        self.assertEqual((m["cover"], m["backdrop"], "cover_custom" in m), ("cover.jpg", "backdrop.jpg", False))
+        self.assertEqual((m["cover"], "cover_custom" in m), ("cover.jpg", False))
 
         # A chosen cover (any shape: cut from the middle) replaces it, and later exports keep it.
         poster = picture(self.path("poster.jpg"), "blue", "600x400")
         code, stdout, err = self.run_cli(src, "--out", out, "--replace", "--cover", poster)
         self.assertEqual(code, 0, err)
-        self.assertIn("Pictures: cover.jpg (chosen), backdrop.jpg", stdout)
+        self.assertIn("Pictures: cover.jpg (chosen)", stdout)
         self.assertEqual(self.run_cli(src, "--out", out, "--replace")[0], 0)
         loader_jpeg(self, os.path.join(dest, "cover.jpg"), (300, 450))
         self.assertGreater(colour(os.path.join(dest, "cover.jpg"))[2], 200, "the chosen cover is kept")
-        self.assertGreater(colour(os.path.join(dest, "backdrop.jpg"))[0], 200, "the backdrop stays the menu art")
 
         # A picture chosen on the Switch (the loader writes BMP) is kept as well.
         with open(os.path.join(dest, "manifest.json"), encoding="utf-8") as f:
             m = json.load(f)
-        m.update(backdrop="backdrop.bmp", backdrop_custom=True)
+        m.update(cover="cover.bmp", cover_custom=True)
         write(os.path.join(dest, "manifest.json"), json.dumps(m))
-        write(os.path.join(dest, "backdrop.bmp"), b"BM switch")
+        write(os.path.join(dest, "cover.bmp"), b"BM switch")
         self.assertEqual(self.run_cli(src, "--out", out, "--replace")[0], 0)
         with open(os.path.join(dest, "manifest.json"), encoding="utf-8") as f:
             m = json.load(f)
-        self.assertEqual((m["cover"], m["backdrop"], m["backdrop_custom"]), ("cover.jpg", "backdrop.bmp", True))
-        self.assertTrue(os.path.isfile(os.path.join(dest, "backdrop.bmp")))
+        self.assertEqual((m["cover"], m["cover_custom"]), ("cover.bmp", True))
+        self.assertTrue(os.path.isfile(os.path.join(dest, "cover.bmp")))
 
     @unittest.skipUnless(HAVE_FFMPEG, "FFmpeg not installed")
     def test_pictures_fallback_and_failures(self):
@@ -616,13 +614,13 @@ class ImporterTest(unittest.TestCase):
         self.assertNotIn("Warnings", stdout, "a game without menu art is not a problem")
 
         picture(os.path.join(src, "game", "gui", "main_menu.png"), "red")
-        code, stdout, err = self.run_cli(src, "--backdrop", self.path("missing.png"))
+        code, stdout, err = self.run_cli(src, "--cover", self.path("missing.png"))
         self.assertEqual(code, 1)
-        self.assertIn("backdrop %s: " % self.path("missing.png"), err)
+        self.assertIn("cover %s: " % self.path("missing.png"), err)
         with mock.patch.object(media, "find_tool", return_value=None):
             code, stdout, err = self.run_cli(src)
             self.assertEqual(code, 0, err)
-            self.assertIn("no cover or backdrop from gui/main_menu.png: FFmpeg is needed for covers", stdout)
+            self.assertIn("no cover from gui/main_menu.png: FFmpeg is needed for covers", stdout)
             self.assertIn("Pictures: none", stdout)
             code, _, err = self.run_cli(src, "--cover", self.path("poster.png"))
             self.assertEqual(code, 1)
@@ -979,23 +977,23 @@ class SwitchFtpTest(unittest.TestCase):
         art = picture(os.path.join(self.tmp, "art.png"), "blue")
         dest = os.path.join(self.games, "fake-quest")
         for target in (self.URL, self.sd):
-            imp.set_art(target, "fake-quest", "backdrop", art)
+            imp.set_art(target, "fake-quest", "cover", art)
             got = imp.read_art(target, "fake-quest")
-            self.assertEqual(list(got), ["backdrop"])
-            self.assertEqual(got["backdrop"][0], "backdrop.jpg")
-            loader_jpeg(self, os.path.join(dest, "backdrop.jpg"), (640, 360))
+            self.assertEqual(list(got), ["cover"])
+            self.assertEqual(got["cover"][0], "cover.jpg")
+            loader_jpeg(self, os.path.join(dest, "cover.jpg"), (300, 450))
         with open(os.path.join(dest, "manifest.json"), encoding="utf-8") as f:
             m = json.load(f)
-        self.assertEqual((m["backdrop"], m["backdrop_custom"], m["title"]), ("backdrop.jpg", True, "Fake Quest"))
+        self.assertEqual((m["cover"], m["cover_custom"], m["title"]), ("cover.jpg", True, "Fake Quest"))
 
-        # Chosen on the Switch: the loader writes cover.bmp. An update over FTP keeps both.
+        # Chosen on the Switch: the loader writes cover.bmp. An update over FTP keeps it.
         m.update(cover="cover.bmp", cover_custom=True)
         write(os.path.join(dest, "manifest.json"), json.dumps(m))
         write(os.path.join(dest, "cover.bmp"), b"BM switch")
         self.export(replace=True)
-        self.assertEqual(sorted(os.listdir(dest)), ["backdrop.jpg", "cover.bmp", "game", "manifest.json"])
+        self.assertEqual(sorted(os.listdir(dest)), ["cover.bmp", "game", "manifest.json"])
         self.assertEqual(os.listdir(self.games), ["fake-quest"], "no .old- folder left")
-        self.assertEqual(sorted(imp.read_art(self.URL, "fake-quest")), ["backdrop", "cover"])
+        self.assertEqual(sorted(imp.read_art(self.URL, "fake-quest")), ["cover"])
 
         write(os.path.join(self.games, "by-hand", "game", "script.rpy"), "label start:\n")
         for game, why in (("by-hand", "no manifest.json"), ("gone", "not in the library"), ("..", "not in the library")):

@@ -19,9 +19,8 @@ static const hint help_rows[] = {
 };
 
 static const char *const layout_text[LAYOUT_COUNT] = {
-    "One line of covers, like the HOME menu. The chosen game is bigger, its details below.",
+    "One line of covers along the bottom, like the HOME menu, the chosen game named above them.",
     "Five covers per row with their titles. Quick to scan a long list.",
-    "The chosen game's own art fills the screen behind one line of covers.",
 };
 
 /* ------------------------------------------------------------- how to play */
@@ -133,7 +132,7 @@ void build_help(lv_obj_t *s)
 
     /* 4. The + menu: layouts and colours. */
     art = guide_card(list, 3, "Make it yours",
-                     "Press + in the library for the menu: in Layout, choose Row, Grid or Cinematic, "
+                     "Press + in the library for the menu: in Layout, choose Row or Grid, "
                      "the game backgrounds and the accent colour; or test your controller.", NULL);
     for (int k = 0; k < 4; k++) {
         o = shape(art, 26 + k * 64 - (k == 1 ? 6 : 0), k == 1 ? 18 : 26, k == 1 ? 60 : 48, k == 1 ? 88 : 72,
@@ -170,10 +169,7 @@ void build_help(lv_obj_t *s)
  * page follows a new accent live, without being rebuilt. */
 static void skeleton(lv_obj_t *p, int l)
 {
-    if (l == LAYOUT_CINEMA) {
-        lv_obj_t *bg = shape(p, 0, 0, 328, 200, tint(1), LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_grad_color(bg, lv_color_hex(BG), 0);
-        lv_obj_set_style_bg_grad_dir(bg, LV_GRAD_DIR_VER, 0);
+    if (l == LAYOUT_ROW) {   /* the focused game is named above the covers */
         shape(p, 16, 20, 130, 14, TEXT, LV_OPA_COVER, 7);
         shape(p, 16, 42, 50, 10, AMBER, LV_OPA_70, 5);
         shape(p, 72, 42, 50, 10, DIM, LV_OPA_70, 5);
@@ -185,7 +181,7 @@ static void skeleton(lv_obj_t *p, int l)
             y = 16 + k / 5 * 92;
         } else {
             x = 16 + k * 54;
-            y = l == LAYOUT_ROW ? 22 : 114;
+            y = 114;
         }
         if (l == LAYOUT_ROW && k == 1) {
             x -= 4;
@@ -202,15 +198,10 @@ static void skeleton(lv_obj_t *p, int l)
         if (l == LAYOUT_GRID)
             shape(p, x, y + h + 6, 36, 6, DIM, LV_OPA_COVER, 3);
     }
-    if (l == LAYOUT_ROW) {
-        shape(p, 16, 112, 140, 14, TEXT, LV_OPA_COVER, 7);
-        shape(p, 16, 136, 60, 10, AMBER, LV_OPA_70, 5);
-        shape(p, 82, 136, 60, 10, DIM, LV_OPA_70, 5);
-    }
 }
 
-/* One list, items in g.sel order: the three layouts, the background row,
- * the colour presets, the custom hue row. */
+/* One list, items in g.sel order: the two layouts, the colour presets,
+ * the custom hue row. */
 void build_layout(lv_obj_t *s)
 {
     lv_obj_t *list = scroller(s, HEADER_H);
@@ -241,18 +232,6 @@ void build_layout(lv_obj_t *s)
         para(c, f_s, DIM, layout_text[l]);
         u.items[l] = c;
     }
-
-    heading(list, "Background", 28);
-    lv_obj_t *bg = box(list);
-    lv_obj_set_size(bg, lv_pct(100), 54);
-    lv_obj_set_flex_flow(bg, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(bg, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_add_style(bg, &st_row, 0);
-    focusable(bg, NULL);
-    lv_obj_add_style(bg, &st_focus_fill, LV_STATE_FOCUSED);
-    focus_text(bg, label(bg, f_m, TEXT, "Game art behind Cinematic and game details"));
-    u.bg_value = label(bg, f_m, TEXT, "");
-    u.items[SET_BACKDROP] = bg;
 
     row = flex(list, LV_FLEX_FLOW_ROW, 16);   /* the heading, and a warning beside it */
     heading(row, "Colour", 28);
@@ -293,15 +272,11 @@ void build_layout(lv_obj_t *s)
     u.items[SET_CUSTOM] = custom;
     u.count = SET_COUNT;
     u.accent_drawn = ~g.accent;
-    u.hue_drawn = u.bg_drawn = -1;
+    u.hue_drawn = -1;
 }
 
 void update_layout(void)
 {
-    if (u.bg_drawn != g.backdrops) {
-        u.bg_drawn = g.backdrops;
-        set_textf(u.bg_value, "‹   %s   ›", g.backdrops ? "On" : "Off");
-    }
     if (u.hue_drawn != g.accent_hue || u.accent_drawn != g.accent) {
         u.hue_drawn = g.accent_hue;
         u.accent_drawn = g.accent;

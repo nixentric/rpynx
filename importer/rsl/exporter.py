@@ -72,9 +72,9 @@ def copy_files(manifest, gamedir, files, extra, progress, put, workdir):
 
 
 def keep_chosen(manifest, art, old):
-    """--replace: a cover or backdrop the user chose before (in the window, with --cover or
-    on the Switch) stays, unless this export brings a chosen one too. Updates manifest and
-    art; returns the file names to keep from the old export."""
+    """--replace: a cover the user chose before (in the window, with --cover or on the
+    Switch) stays, unless this export brings a chosen one too. Updates manifest and art;
+    returns the file names to keep from the old export."""
     keep = []
     for key in ART:
         name = old.get(key) if isinstance(old, dict) and old.get(key + "_custom") else None
@@ -191,7 +191,7 @@ def ftp_export(manifest, gamedir, files, out, replace, extra, progress, art):
 
 
 def set_art(out, game_id, key, image):
-    """A cover or backdrop the user chose for a game already in the library: image made
+    """A cover the user chose for a game already in the library: image made
     into games/<id>/<key>.jpg and named in its manifest.json as chosen, so that an export
     with --replace keeps it."""
     work = tempfile.mkdtemp(prefix="rsl-art-")

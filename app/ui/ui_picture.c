@@ -9,12 +9,6 @@ static lv_draw_buf_t shot, part;         /* picture page: over g.shot, and what 
 static bool dragged;
 static int drag_x;
 
-static const char *const use_text[USE_COUNT][2] = {
-    { "Use as cover", "The framed part, in the library and on the details" },
-    { "Use as background", "The whole screenshot, behind the details" },
-    { "Use for both", "Cover and background from this screenshot" },
-};
-
 /* Move the cover's frame, and the shade beside it, to g.crop_x. */
 static void place_frame(void)
 {
@@ -69,7 +63,6 @@ void build_picture(lv_obj_t *s)
     lv_label_set_long_mode(t, LV_LABEL_LONG_MODE_DOTS);
     u.shot_text = label(u.chips, f_m, TEXT, "");
     update_picture();
-    side_menu(s, "Use this screenshot", use_text, USE_COUNT, -1, NULL);
 }
 
 void update_picture(void)
