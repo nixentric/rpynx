@@ -223,7 +223,11 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H50.
   confirmed on the console on 2026-10-23 (run 28, second session). `tests/ui/mockups.c` now
   fails when a wrapping label runs past its parent.
 - The loader's first frame takes 130-132 ms, against 80 ms in the first LVGL test on 2026-10-22
-  (run 28, the same on three starts). Not explained.
+  (run 28, the same on three starts), and 226-260 ms once five folders were on the SD.
+  Measured per stage on 2026-10-23: services 24-57 ms, settings 4, library scan 29 (4 games),
+  display 3, fonts and `ui_init` 1 — the rest is the first frame itself, building the screen's
+  objects 152 ms and drawing them 14 ms. [Likely] the console's font is parsed at the first
+  text layout.
 - Still unverified on hardware (run 28): the touch drag of the cover frame, B from the Layout
   page, a game without a `manifest.json`, docked mode.
 - The in-game loader overlay is not built; L-stick press only shows a notice.
