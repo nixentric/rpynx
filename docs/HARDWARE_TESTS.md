@@ -78,5 +78,38 @@ Setup:
 
 Record `logs/the_question/log.txt` and `logs/runtime.log` with every result.
 
+## Milestone 7 tests (graphical loader, covers, Change picture)
+
+Setup:
+- Push `dist/renpy-loader.nro` with `scripts/switch-ftp.sh HOST:PORT push-loader`; it reads the
+  file back and compares.
+- At least one game with pictures and one without, so a real cover and the placeholder are both
+  on screen. The pictures come from the importer: a re-export with `--replace`, or
+  *Change cover…* / *Change background…* in the desktop window, both with `--out ftp://HOST:PORT`.
+- Application mode (hold R while starting a game) for every test that launches a game.
+
+| # | Test | Steps | Expected |
+|---|---|---|---|
+| H36 | Title and first line | Start from hbmenu | hbmenu shows "rpynx"; `loader.log` starts with "rpynx 0.1.0, …" |
+| H37 | How to play | First start, with no how-to-play flag in `config/loader.json` | The guide opens by itself; leaving it returns to the library and the next start goes straight there |
+| H38 | Covers in the library | Open the library | Games with `cover.jpg`/`cover.bmp` show it; games without get the coloured placeholder with the title's first letter; covers fill in one per frame after the first frame, so start-up does not wait for them |
+| H39 | Row layout | Move the focus along the row | The focused cover is 12 % larger and nothing is cut off |
+| H40 | Grid layout | + menu → Layout → Grid | Every cover is drawn; scrolling stays smooth |
+| H41 | Cinematic layout | Switch to Cinematic, move the focus, then hold one direction | The backdrop is the focused game's `backdrop.jpg`, cover-fit and dark toward the bottom; a game without one gets the glow in its cover's colour; holding a direction does not decode on every step (150 ms settle) |
+| H42 | Game details | A on a cover | Backdrop from the menu art, big cover, long notes scroll, and three buttons at the bottom right: Change picture, Controls for this game, Launch |
+| H43 | Back from Layout | + menu → Layout, then B | The library comes back, not the + menu |
+| H44 | Picture page | Details → Change picture | Album screenshots newest first, with "3 of 11" and when it was taken; the 2:3 frame is full height and the rest is shaded; videos are left out |
+| H45 | Move the frame | D-pad and stick, then drag the frame with a finger | Both move the frame; the touch drag follows the finger and stops at the picture's edges |
+| H46 | Use the picture | A → Use as cover / Use as background / Use for both | `cover.bmp` 300×450 and/or `backdrop.bmp` 640×360 written; `manifest.json` gets `"cover_custom": true` / `"backdrop_custom": true`; the library shows the new cover at once |
+| H47 | Game without a manifest | Copy a game folder to `games/` by hand, Change picture on it | A message instead; no picture and no manifest written |
+| H48 | Memory | Note the heap before the picture page, while it is open, and after leaving | The 3.7 MB screenshot buffer is gone after leaving; `loader.log` shows the Album service closed |
+| H49 | Launch still works | Library → a game → Launch, then Quit | The game starts and the loader comes back (regression check after the app/ui split) |
+| H50 | Numbers | Read the `ui` summary line after a minute | first frame, frame time, full redraws, core load, SoC temperature, heap, covers; compare with 2026-10-22: 80 ms, 11–17 ms, 36–38 °C, 20–24 MB |
+
+Fetch the logs with `scripts/switch-ftp.sh HOST:PORT logs` and record the `ui` lines with every
+result. LVGL logs one warning per JPEG decode, because it reads past the last row of blocks; the
+picture is complete. A cover line about a progressive JPEG or an oversized picture is a real
+failure.
+
 Later milestones add the gameplay tests from the project brief (new game, dialogue,
 choices, save/load loops, rollback, suspend during gameplay, soak tests).

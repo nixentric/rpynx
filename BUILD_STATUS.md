@@ -1,6 +1,6 @@
 # Build status
 
-Last updated: 2026-10-21
+Last updated: 2026-10-23
 
 ## Current milestone
 
@@ -129,8 +129,8 @@ are still unverified on hardware. See
 | CPython build | `scripts/build.sh python`: configure + `libpython3.12.a` + 511-module stdlib zip, success |
 | Runtime build | success, 0 warnings, static link with no unresolved symbols |
 | Ren'Py build | `scripts/build.sh renpy`: 60 modules / 73 objects in `librenpy.a`; 169 engine modules staged; 63 SDK common scripts digest-verified |
-| `dist/renpy-runtime.nro` | 55,302,753 bytes, sha256 `b1f1e678d72680e2434b5851ae148b78012d5c70a84892b0fa17eb032caf7f1e` |
-| `dist/renpy-loader.nro` | sha256 `17e49406500f7d0cedde61080c351066377f964553518b603f798207ef734204` (Launch wired) |
+| `dist/renpy-runtime.nro` | 61,535,482 bytes, sha256 `88c91423e7752b3e17e174fd2713ac13ef4c2dcf6fd1e3a9f8355e93751b831b` (runtime split, rpynx titles) |
+| `dist/renpy-loader.nro` | 785,926 bytes, sha256 `19c2f0ed90889dbcc96abad1ee018bd9ea4c88832e98c3208051d98293f3307d` (LVGL loader, covers, Change picture, rpynx titles) |
 | Reproducibility | loader: identical across two clean builds. Milestone 3 runtime: identical across two full rebuilds. Not re-checked for the Ren'Py runtime |
 | libnx layout check | `_Static_assert`s in `input_switch.c` pass |
 
@@ -213,11 +213,14 @@ itself. It does not prove anything about Horizon.
 - Ren'Py: save/reload (H31), smooth video playback (run 13), applet mode after
   the run 8 crash (H34), the full Switch keyboard (run 17 build).
 
-Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H35.
+Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H50.
 
 ## Known bugs and limitations
 
-- The graphical loader has not run on a Switch yet (Milestone 7 hardware test pending).
+- The graphical loader ran on a Switch once (2026-10-22, first LVGL test: first frame 80 ms,
+  frames 11-17 ms, SoC 36-38 °C, no covers). Covers and backdrops, *Change picture* and the
+  touch drag of the cover frame are host-tested only; hardware test pending
+  (`docs/HARDWARE_TESTS.md`, H36-H50).
 - The in-game loader overlay is not built; L-stick press only shows a notice.
 - Live2D and 3D models are unsupported.
 - Non-ASCII file names on the SD card (run 20): about half of Japanese names cannot be created,
