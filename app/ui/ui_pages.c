@@ -74,13 +74,15 @@ void build_help(lv_obj_t *s)
     lv_obj_set_width(keys, lv_pct(100));
     for (size_t i = 0; i < sizeof help_rows / sizeof help_rows[0]; i++) {
         lv_obj_t *row = flex(keys, LV_FLEX_FLOW_ROW, 10);
-        lv_obj_set_width(row, 360);
+        lv_obj_set_width(row, 380);
         lv_obj_t *btns = flex(row, LV_FLEX_FLOW_ROW, 4);
         lv_obj_set_width(btns, 74);
         button_chip(btns, &g.in.cfg, key(help_rows[i].a));
         if (help_rows[i].b >= 0)
             button_chip(btns, &g.in.cfg, key(help_rows[i].b));
-        label(row, f_m, TEXT, help_rows[i].text);
+        /* The rest of the row, so a line the console's wider font cannot fit
+         * wraps instead of being cut off (hardware run 28). */
+        lv_obj_set_flex_grow(label(row, f_m, TEXT, help_rows[i].text), 1);
     }
     snprintf(buf, sizeof buf, "The %s stick moves the mouse cursor. Buttons follow your controller settings.",
              g.in.cfg.cursor_stick == RSL_STICK_RIGHT ? "right" : "left");

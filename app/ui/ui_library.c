@@ -60,7 +60,9 @@ void side_menu(lv_obj_t *s, const char *title, const char *const (*text)[2], int
         focusable(row, NULL);
         lv_obj_add_style(row, &st_focus_fill, LV_STATE_FOCUSED);
         focus_text(row, label(row, f_m, TEXT, text[i][0]));
-        label(row, f_s, DIM, i == dyn ? dyn_sub : text[i][1]);
+        /* Full width, so the subtitle wraps instead of running past the
+         * panel with the console's wider font (hardware run 28). */
+        lv_obj_set_width(label(row, f_s, DIM, i == dyn ? dyn_sub : text[i][1]), lv_pct(100));
         u.menu_items[i] = row;
     }
     lv_obj_t *foot = box(p);

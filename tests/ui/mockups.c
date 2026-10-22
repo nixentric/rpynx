@@ -5,7 +5,8 @@
  * Also the regression test for "redraws every frame" (docs/LOADER_UI.md): on
  * every screen, once it has settled, frames with nothing changed must draw
  * nothing. And that a tap on the touchscreen reaches the item or footer hint
- * under it. Exits 1 if a check fails. */
+ * under it, and that no wrapping label runs past its parent. Exits 1 if a
+ * check fails. */
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
@@ -91,12 +92,40 @@ static void settle(void)
     lv_refr_now(NULL);
 }
 
+/* Every wrapping label must fit the width of its parent. A label built
+ * without a width of its own is as wide as its text, and a parent with a
+ * fixed width then cuts it off (hardware run 28: the how to play rows and the
+ * side menu's subtitles). Labels that shorten themselves (dots, clip, scroll)
+ * and parents that scroll sideways are left alone. Run the mockups with a
+ * font wider than the console's to see what the console would cut. */
+static void fits(lv_obj_t *o, const char *name)
+{
+    lv_area_t box, in;
+    lv_obj_get_content_coords(o, &in);
+    bool pans = lv_obj_is_scrollable(o) && (lv_obj_get_scroll_dir(o) & LV_DIR_HOR);
+    for (uint32_t i = 0; i < lv_obj_get_child_count(o); i++) {
+        lv_obj_t *c = lv_obj_get_child(o, i);
+        fits(c, name);
+        if (pans || lv_obj_is_hidden(c) || !lv_obj_check_type(c, &lv_label_class) ||
+            lv_label_get_long_mode(c) != LV_LABEL_LONG_MODE_WRAP)
+            continue;
+        lv_obj_get_coords(c, &box);
+        int32_t over = (box.x2 - in.x2 > in.x1 - box.x1 ? box.x2 - in.x2 : in.x1 - box.x1);
+        if (over > 1) {
+            fprintf(stderr, "FAIL %s: \"%s\" runs %d px past its parent\n", name, lv_label_get_text(c), over);
+            failures++;
+        }
+    }
+}
+
 /* XRGB8888 is B,G,R,X in memory: exactly a 32-bit BMP row. Before saving:
- * the redraw check, then a timed full redraw (host CPU, not Switch timing). */
+ * the redraw and label-width checks, then a timed full redraw (host CPU, not
+ * Switch timing). */
 static void shot(const char *dir, const char *name)
 {
     int before = flushes;
     frames(10);
+    fits(lv_screen_active(), name);
     if (flushes != before) {
         fprintf(stderr, "FAIL %s: %d frames drawn with nothing changed\n", name, flushes - before);
         failures++;
@@ -485,6 +514,6 @@ int main(int argc, char **argv)
     settle();
     shot(out, "9-library-empty");
     if (failures)
-        fprintf(stderr, "%d check(s) failed: redraws, taps\n", failures);
+        fprintf(stderr, "%d check(s) failed: redraws, taps, label widths\n", failures);
     return failures != 0;
 }
