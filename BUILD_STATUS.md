@@ -130,7 +130,7 @@ are still unverified on hardware. See
 | Runtime build | success, 0 warnings, static link with no unresolved symbols |
 | Ren'Py build | `scripts/build.sh renpy`: 60 modules / 73 objects in `librenpy.a`; 169 engine modules staged; 63 SDK common scripts digest-verified |
 | `dist/renpy-runtime.nro` | 61,535,482 bytes, sha256 `88c91423e7752b3e17e174fd2713ac13ef4c2dcf6fd1e3a9f8355e93751b831b` (runtime split, rpynx titles) |
-| `dist/renpy-loader.nro` | 781,830 bytes, sha256 `4dd6a19f15dc725be91c282d00a0d8fbeb06edca25291256b5e07123f23060af` (LVGL loader, covers, Change picture, rpynx titles, run 28's label fixes, no Cinematic and no pictures behind the UI; run 28 itself tested `19c2f0ed…`) |
+| `dist/renpy-loader.nro` | 781,830 bytes, sha256 `b6b24b884662298c6460ee3fb0f35d698ab1d320ea4e5710bc63a5345956837a` (LVGL loader, covers, Change picture, rpynx titles, run 28's label fixes, no Cinematic and no pictures behind the UI; run 28 itself tested `19c2f0ed…`) |
 | Reproducibility | loader: identical across two clean builds. Milestone 3 runtime: identical across two full rebuilds. Not re-checked for the Ren'Py runtime |
 | libnx layout check | `_Static_assert`s in `input_switch.c` pass |
 

@@ -221,6 +221,7 @@ void build_layout(lv_obj_t *s)
         lv_obj_t *c = flex(cards, LV_FLEX_FLOW_ROW, 20);
         lv_obj_add_style(c, &st_card, 0);
         lv_obj_set_flex_grow(c, 1);
+        lv_obj_set_height(c, 150 + 2 * 20);   /* the wireframe and its padding: both cards alike */
         lv_obj_set_style_pad_all(c, 20, 0);
         lv_obj_set_flex_align(c, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
         focusable(c, NULL);
