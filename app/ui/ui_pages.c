@@ -19,7 +19,7 @@ static const hint help_rows[] = {
 };
 
 static const char *const layout_text[LAYOUT_COUNT] = {
-    "One line of covers along the bottom, like the HOME menu, the chosen game named above them.",
+    "One line of covers along the bottom, like the HOME menu.",
     "Five covers per row with their titles. Quick to scan a long list.",
 };
 
