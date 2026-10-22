@@ -167,12 +167,14 @@ void build_help(lv_obj_t *s)
 
 /* A wireframe of layout l in a 328 x 200 box. White, not the accent: the
  * page follows a new accent live, without being rebuilt. */
-static void skeleton(lv_obj_t *p, int l)
+#define SK(v) ((v) * box / 328)        /* the wireframe was drawn 328 px wide */
+
+static void skeleton(lv_obj_t *p, int l, int box)
 {
     if (l == LAYOUT_ROW) {   /* the focused game is named above the covers */
-        shape(p, 16, 20, 130, 14, TEXT, LV_OPA_COVER, 7);
-        shape(p, 16, 42, 50, 10, AMBER, LV_OPA_70, 5);
-        shape(p, 72, 42, 50, 10, DIM, LV_OPA_70, 5);
+        shape(p, SK(16), SK(20), SK(130), SK(14), TEXT, LV_OPA_COVER, 7);
+        shape(p, SK(16), SK(42), SK(50), SK(10), AMBER, LV_OPA_70, 5);
+        shape(p, SK(72), SK(42), SK(50), SK(10), DIM, LV_OPA_70, 5);
     }
     for (int k = 0; k < (l == LAYOUT_GRID ? 10 : 6); k++) {
         int x, y, w = 44, h = 66;
@@ -189,14 +191,14 @@ static void skeleton(lv_obj_t *p, int l)
             w += 8;
             h += 12;
         }
-        lv_obj_t *o = shape(p, x, y, w, h, tint(k), LV_OPA_COVER, 6);
+        lv_obj_t *o = shape(p, SK(x), SK(y), SK(w), SK(h), tint(k), LV_OPA_COVER, 6);
         if (k == (l == LAYOUT_ROW ? 1 : 0)) {
             lv_obj_set_style_outline_color(o, lv_color_hex(TEXT), 0);
             lv_obj_set_style_outline_width(o, 2, 0);
             lv_obj_set_style_outline_pad(o, 2, 0);
         }
         if (l == LAYOUT_GRID)
-            shape(p, x, y + h + 6, 36, 6, DIM, LV_OPA_COVER, 3);
+            shape(p, SK(x), SK(y + h + 6), SK(36), SK(6), DIM, LV_OPA_COVER, 3);
     }
 }
 
@@ -209,31 +211,39 @@ void build_layout(lv_obj_t *s)
     lv_obj_set_style_pad_row(list, 4, 0);
 
     heading(list, "Library", 0);
-    lv_obj_t *row = flex(list, LV_FLEX_FLOW_ROW, 24);
-    make_room(row);
+    /* The two layouts side by side, each card split in half: its wireframe on
+     * the left, its name and what it does on the right. Full width, and the
+     * colour row still fits under them. */
+    lv_obj_t *cards = flex(list, LV_FLEX_FLOW_ROW, 24);
+    lv_obj_set_width(cards, lv_pct(100));
+    make_room(cards);
     for (int l = 0; l < LAYOUT_COUNT; l++) {
-        lv_obj_t *c = flex(row, LV_FLEX_FLOW_COLUMN, 12);
+        lv_obj_t *c = flex(cards, LV_FLEX_FLOW_ROW, 20);
         lv_obj_add_style(c, &st_card, 0);
-        lv_obj_set_size(c, 376, 404);
+        lv_obj_set_flex_grow(c, 1);
+        lv_obj_set_style_pad_all(c, 20, 0);
+        lv_obj_set_flex_align(c, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
         focusable(c, NULL);
         lv_obj_add_style(c, &st_focus_fill, LV_STATE_FOCUSED);
         lv_obj_t *p = box(c);
-        lv_obj_set_size(p, 328, 200);
+        lv_obj_set_size(p, 246, 150);
         lv_obj_set_style_bg_color(p, lv_color_hex(BG), 0);
         lv_obj_set_style_bg_opa(p, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(p, 12, 0);
         lv_obj_set_style_clip_corner(p, true, 0);
-        skeleton(p, l);
-        lv_obj_t *t = flex(c, LV_FLEX_FLOW_ROW, 12);
-        lv_obj_set_style_pad_top(t, 6, 0);
+        skeleton(p, l, 246);
+        lv_obj_t *col = flex(c, LV_FLEX_FLOW_COLUMN, 10);
+        lv_obj_set_flex_grow(col, 1);
+        lv_obj_t *t = flex(col, LV_FLEX_FLOW_ROW_WRAP, 10);
+        lv_obj_set_width(t, lv_pct(100));
         focus_text(c, label(t, f_l, TEXT, layout_name[l]));
         if (l == g.layout)
             pill(t, TEXT, "In use");
-        para(c, f_s, DIM, layout_text[l]);
+        para(col, f_s, DIM, layout_text[l]);
         u.items[l] = c;
     }
 
-    row = flex(list, LV_FLEX_FLOW_ROW, 16);   /* the heading, and a warning beside it */
+    lv_obj_t *row = flex(list, LV_FLEX_FLOW_ROW, 16);   /* the heading, and a warning beside it */
     heading(row, "Colour", 28);
     u.warn = label(row, f_s, AMBER, "Close to the red used for problems: focus and errors may look alike.");
     lv_obj_set_style_pad_top(u.warn, 28, 0);
