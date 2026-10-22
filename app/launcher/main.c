@@ -212,6 +212,17 @@ static void summary(void)
     stats.last_summary = g.now;
 }
 
+/* Milliseconds since the last mark, for the start-up stages below: run 28
+ * started in 80 ms with 4 games and 237 ms with 5, which no part of the code
+ * explains yet, so the line says where the time goes. */
+static uint32_t stage_ms(void)
+{
+    static uint32_t mark;
+    uint32_t now = (uint32_t)(armTicksToNs(armGetSystemTick() - stats.start) / 1000000ULL), d = now - mark;
+    mark = now;
+    return d;
+}
+
 int main(int argc, char **argv)
 {
     stats.start = armGetSystemTick();
@@ -238,6 +249,8 @@ int main(int argc, char **argv)
     psmInitialize();
     plInitialize(PlServiceType_User);
 
+    uint32_t d_cfg = stage_ms();
+
     struct stat st;
     u64 total = 0;
     svcGetInfo(&total, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
@@ -250,7 +263,9 @@ int main(int argc, char **argv)
     g.runtime_found = stat(RUNTIME_NRO, &st) == 0;
     g.capture = -1;
     load_settings();
+    uint32_t d_set = stage_ms();
     scan_games();
+    uint32_t d_scan = stage_ms();
     go(m.help_seen ? SCR_LIBRARY : SCR_HELP);
 
     lv_init();
@@ -266,11 +281,15 @@ int main(int argc, char **argv)
     }
     /* The console's own fonts, from shared memory: the text font, and the
      * button icons the HOME menu uses. Nothing of them is in this .nro. */
+    uint32_t d_disp = stage_ms();
     PlFontData text = { 0 }, icons = { 0 };
     bool have_text = R_SUCCEEDED(plGetSharedFontByType(&text, PlSharedFontType_Standard));
     bool have_icons = R_SUCCEEDED(plGetSharedFontByType(&icons, PlSharedFontType_NintendoExt));
     if (!m.quit)
         ui_init(have_text ? text.address : NULL, text.size, have_icons ? icons.address : NULL, icons.size);
+    rsl_log("ui start stages: services %u, settings %u, scan %u (%d game(s)), display %u, fonts and ui %u ms",
+            (unsigned)d_cfg, (unsigned)d_set, (unsigned)d_scan, g.game_count, (unsigned)d_disp,
+            (unsigned)stage_ms());
     rsl_telemetry_line(&stats.telemetry, err, sizeof err);   /* the first call only sets the baseline */
 
     AppletHookCookie hook;
