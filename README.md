@@ -12,12 +12,34 @@
 A Nintendo Switch homebrew loader (`.nro`) meant to run legally obtained, DRM-free Ren'Py
 games from the SD card, with a first-class remappable controller system.
 
-**Status: Ren'Py 8.5.3 runs on a real Switch.** "The Question" starts, renders with GLES 3.2
-and quits cleanly (hardware run 5), and games exported by the macOS importer launch from the
-loader's library (run 9). Audio plays (run 21). Saves, suspend and touch are still unverified on hardware.
-See [BUILD_STATUS.md](BUILD_STATUS.md) for what is built, tested and hardware-verified.
+**Status: a preview.** Ren'Py 8.5.3 games run on a real Switch: they render with GLES 3.2,
+play audio, save and load, and survive sleep (hardware runs 5–27). The graphical library with
+covers (run 28) and sending games over Wi-Fi from the importer (run 29) are tested on a Switch
+too. Docked play and controller reconnect are not. See [BUILD_STATUS.md](BUILD_STATUS.md) for
+what is built, tested and hardware-verified.
 
-## Build (macOS Apple Silicon or Linux)
+## Download
+
+From the [latest release](https://github.com/nixentric/rpynx/releases/latest); no need to build
+anything yourself.
+
+| File | What it is |
+|---|---|
+| [renpy-loader.nro](https://github.com/nixentric/rpynx/releases/latest/download/renpy-loader.nro) | The loader: copy it to `switch/renpy-loader/` on the SD card |
+| [renpy-runtime.nro](https://github.com/nixentric/rpynx/releases/latest/download/renpy-runtime.nro) | Python and Ren'Py: copy it to `switch/renpy-loader/runtimes/` |
+| [rpynx-importer-windows.exe](https://github.com/nixentric/rpynx/releases/latest/download/rpynx-importer-windows.exe) | The importer for Windows |
+| [rpynx-importer-macos-arm64.dmg](https://github.com/nixentric/rpynx/releases/latest/download/rpynx-importer-macos-arm64.dmg) | The importer for Macs with Apple silicon: drag it to Applications |
+| [rpynx-importer-python.zip](https://github.com/nixentric/rpynx/releases/latest/download/rpynx-importer-python.zip) | The importer as Python, for Linux and Intel Macs: `python3 rsl_import.py` |
+
+Every release has every file; parts that did not change are the previous release's files, as
+its notes say. `SHA256SUMS.txt` in each release has the checksums. The importer apps are not
+signed: macOS asks to confirm (right-click, Open), Windows shows SmartScreen (More info, Run
+anyway). How to install and import a game: [rpynx.nixentric.com](https://rpynx.nixentric.com/getting-started/install/).
+
+Releases are made by [.github/workflows/release.yml](.github/workflows/release.yml) when a tag
+`v<APP_VERSION>` is pushed.
+
+## Build it yourself (macOS Apple Silicon, Linux, or Windows with WSL 2)
 
 Requires Docker. On macOS without Docker Desktop:
 
@@ -28,6 +50,23 @@ brew install colima docker
 ```bash
 colima start --cpu 4 --memory 4 --vm-type vz
 ```
+
+On Windows, build inside WSL 2 with Ubuntu: the scripts are POSIX shell and want a Linux file
+system. Not tried yet on Windows; the same steps work on Linux.
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+In the Ubuntu shell, Docker comes either from Docker Desktop for Windows (Settings → Resources
+→ WSL integration: on for Ubuntu) or from Ubuntu itself:
+
+```bash
+sudo apt install docker.io git && sudo usermod -aG docker $USER
+```
+
+Clone the repository into the Linux home (`~/rpynx`), not under `/mnt/c/`: files there are slow
+to build from and lose their executable bits.
 
 Then:
 
@@ -60,7 +99,7 @@ tests/integration/renpy_desktop/run.sh
 The toolchain is the pinned `devkitpro/devkita64:20260219`
 image (digest in `scripts/build.sh`). No Nintendo SDK files are used or needed.
 
-Host unit tests (Apple clang or gcc, no Docker):
+Host unit tests (Apple clang or gcc, no Docker; the screen mockups in it need macOS's `sips`):
 
 ```bash
 scripts/test.sh
@@ -95,6 +134,8 @@ not replace:
   - It also statically links devkitPro's switch-ffmpeg, which is **built with `--enable-gpl`**.
   - So the runtime binary as a whole is covered by the **GPL (version 2 or later)**.
   - Anyone who distributes it must provide the complete corresponding source, or a written
-    offer for it. Personal use is not affected.
+    offer for it. Personal use is not affected. Each release of this repository attaches
+    FFmpeg's source (`ffmpeg-7.1.tar.xz`, devkitPro's switch-ffmpeg 7.1) next to the runtime;
+    the rest is this repository at the release's tag, built in the pinned devkitPro image.
   - To make it LGPL instead, build FFmpeg without `--enable-gpl`. LGPL relinking materials
     would still be needed, because it is linked statically.

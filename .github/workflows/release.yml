@@ -1,0 +1,162 @@
+# Release: pushing a tag v<APP_VERSION> (the Makefile's) builds what changed since the
+# last published release, copies every other file from that release unchanged, and
+# publishes them all together, so each release has every download.
+#   - renpy-loader.nro: always built (a few minutes);
+#   - renpy-runtime.nro: built when the runtime's sources changed (a version bump alone
+#     does not count), else the previous release's file;
+#   - the importer (Windows .exe, macOS .dmg, Python .zip): built when importer/ changed,
+#     else the previous release's files.
+# Run it by hand (Actions → release → Run workflow) for a dry run: it builds what it would,
+# keeps the files as workflow artifacts, and publishes nothing.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  # The runtime links devkitPro's switch-ffmpeg 7.1, built with --enable-gpl, so FFmpeg's
+  # source goes with every release (README "Legal").
+  FFMPEG: ffmpeg-7.1
+  FFMPEG_SHA256: 40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      prev: ${{ steps.plan.outputs.prev }}
+      runtime: ${{ steps.plan.outputs.runtime }}
+      importer: ${{ steps.plan.outputs.importer }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: plan
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            want="v$(sed -n 's/^APP_VERSION[[:space:]]*:=[[:space:]]*//p' Makefile)"
+            [ "$GITHUB_REF_NAME" = "$want" ] || { echo "::error::tag $GITHUB_REF_NAME, but APP_VERSION in the Makefile makes $want"; exit 1; }
+          fi
+          prev=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 50 --json tagName \
+                 --jq '.[].tagName' | grep -vx "$GITHUB_REF_NAME" | head -n 1 || true)
+          runtime=reuse importer=reuse
+          if [ -z "$prev" ] \
+             || ! git diff --quiet "$prev" HEAD -- runtime docker scripts/build.sh app/diagnostics platform/input platform/filesystem third_party/cjson \
+             || git diff "$prev" HEAD -- Makefile | grep -E '^[-+]' | grep -vE '^(\+\+\+|---) ' | grep -qv APP_VERSION; then
+            runtime=build
+          fi
+          if [ -z "$prev" ] || ! git diff --quiet "$prev" HEAD -- importer; then
+            importer=build
+          fi
+          { echo "prev=$prev"; echo "runtime=$runtime"; echo "importer=$importer"; } >> "$GITHUB_OUTPUT"
+          echo "Previous release: ${prev:-none}. Runtime: $runtime. Importer: $importer." >> "$GITHUB_STEP_SUMMARY"
+
+  switch:
+    needs: plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Loader
+        run: scripts/build.sh && sudo chown -R "$(id -u):$(id -g)" dist build
+      - name: Runtime, built
+        if: needs.plan.outputs.runtime == 'build'
+        run: |
+          scripts/build.sh python
+          scripts/build.sh renpy
+          scripts/build.sh runtime
+          sudo chown -R "$(id -u):$(id -g)" dist build
+      - name: Runtime, the same file as ${{ needs.plan.outputs.prev }}
+        if: needs.plan.outputs.runtime == 'reuse'
+        run: gh release download "${{ needs.plan.outputs.prev }}" --repo "$GITHUB_REPOSITORY" -p renpy-runtime.nro -D dist --clobber
+      - uses: actions/upload-artifact@v4
+        with:
+          name: switch
+          path: |
+            dist/renpy-loader.nro
+            dist/renpy-runtime.nro
+
+  importer:
+    needs: plan
+    if: needs.plan.outputs.importer == 'build'
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            asset: rpynx-importer-windows.exe
+          - os: macos-latest
+            asset: rpynx-importer-macos-arm64.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # ponytail: unpinned, so a new PyInstaller or pywebview can change a build; pin them
+      # here if one breaks.
+      - run: python -m pip install pyinstaller pywebview
+      - run: python importer/build_app.py
+      - name: Package
+        shell: bash
+        run: |
+          mkdir out
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp "dist/importer/RSL Importer.exe" "out/${{ matrix.asset }}"
+          else   # the app beside a link to Applications, to drag it onto
+            mkdir dmg && cp -R "dist/importer/RSL Importer.app" dmg/ && ln -s /Applications dmg/Applications
+            hdiutil create -volname "RSL Importer" -srcfolder dmg -format UDZO "out/${{ matrix.asset }}"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: out/${{ matrix.asset }}
+
+  release:
+    needs: [plan, switch, importer]
+    if: >-
+      always() && github.ref_type == 'tag' && needs.switch.result == 'success' &&
+      (needs.importer.result == 'success' || needs.importer.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Importer, FFmpeg source, checksums
+        run: |
+          prev="${{ needs.plan.outputs.prev }}"
+          if [ "${{ needs.plan.outputs.importer }}" = build ]; then
+            (cd importer && zip -qr ../assets/rpynx-importer-python.zip rsl_import.py rsl_import_gui.py \
+              rsl_import_gui.html rsl -x '*__pycache__*')
+          else
+            gh release download "$prev" --repo "$GITHUB_REPOSITORY" -p 'rpynx-importer-*' -D assets
+          fi
+          curl -fsSL -o "assets/$FFMPEG.tar.xz" "https://ffmpeg.org/releases/$FFMPEG.tar.xz"
+          echo "$FFMPEG_SHA256  assets/$FFMPEG.tar.xz" | sha256sum -c -
+          (cd assets && sha256sum -- * > SHA256SUMS.txt)
+      - name: Notes
+        run: |
+          prev="${{ needs.plan.outputs.prev }}"
+          from() { [ "$1" = build ] && echo "built from this tag" || echo "the same file as $prev"; }
+          cat > notes.md <<EOF
+          Install: https://rpynx.nixentric.com/getting-started/install/ · What changed: https://rpynx.nixentric.com/changelog/
+
+          | File | What | In this release |
+          |---|---|---|
+          | \`renpy-loader.nro\` | The loader, to \`switch/renpy-loader/\` on the SD card | built from this tag |
+          | \`renpy-runtime.nro\` | Python and Ren'Py, to \`switch/renpy-loader/runtimes/\` | $(from "${{ needs.plan.outputs.runtime }}") |
+          | \`rpynx-importer-windows.exe\` | The importer for Windows | $(from "${{ needs.plan.outputs.importer }}") |
+          | \`rpynx-importer-macos-arm64.dmg\` | The importer for Macs with Apple silicon | $(from "${{ needs.plan.outputs.importer }}") |
+          | \`rpynx-importer-python.zip\` | The importer as Python, for Linux and Intel Macs: \`python3 rsl_import.py\` | $(from "${{ needs.plan.outputs.importer }}") |
+          | \`SHA256SUMS.txt\` | Checksums of these files | |
+
+          The importer apps are not signed: macOS asks to confirm (right-click, Open), Windows shows SmartScreen (More info, Run anyway).
+
+          \`renpy-runtime.nro\` statically links devkitPro's switch-ffmpeg 7.1, built with \`--enable-gpl\`, so the runtime as a whole is under the GPL (version 2 or later). Its source: this repository at this tag (the source archives below), built in the pinned devkitPro image (\`docker/Dockerfile\`); FFmpeg's source is attached (\`$FFMPEG.tar.xz\`), and devkitPro's build recipe is https://github.com/devkitPro/pacman-packages/tree/master/switch/ffmpeg.
+          EOF
+      - run: gh release create "$GITHUB_REF_NAME" assets/* --repo "$GITHUB_REPOSITORY" --title "rpynx ${GITHUB_REF_NAME#v}" --notes-file notes.md
