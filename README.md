@@ -39,6 +39,60 @@ anyway). How to install and import a game: [rpynx.nixentric.com](https://rpynx.n
 Releases are made by [.github/workflows/release.yml](.github/workflows/release.yml) when a tag
 `v<APP_VERSION>` is pushed.
 
+## Quick use
+
+### 1. Install, once
+
+1. A Switch that runs homebrew: Atmosphère and the Homebrew Menu.
+2. On the SD card: `renpy-loader.nro` to `switch/renpy-loader/`, and `renpy-runtime.nro` to
+   `switch/renpy-loader/runtimes/`.
+3. Start rpynx with **full memory**: on the HOME menu, hold **R** while you open any game, keep
+   holding until the Homebrew Menu appears, then open rpynx. Opened from the Album, it has too
+   little memory and games do not start.
+
+### 2. Import a game, on your computer
+
+Before you start:
+
+- **No need to unpack the game.** Give the importer the game's folder, or its `.zip`, `.7z` or
+  `.rar` as downloaded. It takes only what the Switch needs: the `game/` folder (scripts,
+  pictures, sound, `.rpa` archives). The Windows, Mac and Linux launchers, `renpy/` and `lib/`
+  stay behind, because the Switch runtime has its own engine. The original is never changed.
+- **Tools it may want:** [7-Zip](https://www.7-zip.org/) for `.7z` and `.rar` only;
+  [FFmpeg](https://ffmpeg.org/) for the cover, the video check and *Optimize*. A folder or a
+  `.zip` needs neither.
+- **Optimize** (`--optimize`): turn it on when the report flags videos above 30 fps. They are
+  re-encoded at 30 fps, same size, so they play smoothly on the console; nothing else is
+  touched. When the report says `Switch performance: OK`, it is not needed.
+- A **Ren'Py 7** game (Python 2): turn on *Recompile* (`--recompile`), so Ren'Py 8.5.3
+  compiles its scripts on the console.
+
+Then:
+
+1. Open the importer and drop the game's folder or archive on its window. Read the report:
+   the status, and anything that needs attention.
+2. Choose where it goes: the **SD card**, or **Switch over Wi-Fi**. For Wi-Fi, open rpynx on
+   the Switch, press **+**, choose **Add games over Wi-Fi**, and type the address it shows.
+3. **Export.** Over Wi-Fi the Switch shows a progress bar, then "*title* arrived".
+
+The same from the command line:
+
+```bash
+python3 rsl_import.py ~/Downloads/MyGame.zip --optimize --out ftp://192.168.1.20:5000
+```
+
+### 3. Play
+
+1. In the library, choose the game, press **A** for its details, then **Launch**.
+2. **A** advances the story and chooses, **B** goes back, **X** hides the text box, **Y** shows
+   the history, **L**/**R** roll back and forward, **ZR** held skips, **+** opens the game menu
+   to save and load. Every button can be remapped (+ → *Controller settings*).
+3. *Quit* in the game menu returns to the library. Saves stay on the SD card, per game.
+4. Buttons stopped working? Hold **+** and **−** together for 3 seconds: the default controls
+   come back.
+
+Full guide: [rpynx.nixentric.com](https://rpynx.nixentric.com/).
+
 ## Build it yourself (macOS Apple Silicon, Linux, or Windows with WSL 2)
 
 Requires Docker. On macOS without Docker Desktop:

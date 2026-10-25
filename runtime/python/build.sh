@@ -28,10 +28,15 @@ HOSTPY=$B/host/bin/python3.12
 if [ ! -x "$HOSTPY" ]; then
     rm -rf "$B/host-src" && mkdir -p "$B/host-src"
     tar -xf "$TARBALL" -C "$B/host-src"
+    # In a clean environment: devkitPro's Makefile rules export to every recipe,
+    # `make python` included, the Switch compiler as CC (configure: "cannot run C
+    # compiled programs") and the loader's folders as VPATH (the bootstrap
+    # interpreter then looks for its stdlib there). First seen on a clean CI checkout.
+    host() { env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="${HOME:-/root}" SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" "$@"; }
     (cd "$B/host-src/Python-$PYVER" &&
-        ./configure --prefix="$B/host" --without-ensurepip >"$B/host-configure.log" &&
-        make -j"$JOBS" >"$B/host-make.log" 2>&1 &&
-        make install >"$B/host-install.log" 2>&1)
+        host ./configure --prefix="$B/host" --without-ensurepip >"$B/host-configure.log" &&
+        host make -j"$JOBS" >"$B/host-make.log" 2>&1 &&
+        host make install >"$B/host-install.log" 2>&1)
 fi
 "$HOSTPY" -c 'import sys, zlib; assert sys.version.startswith("'$PYVER'")'
 
