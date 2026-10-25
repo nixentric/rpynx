@@ -69,7 +69,7 @@ static void game_file(char *out, size_t size, const char *game, const char *name
 /* What a game needs, from the manifest.json the importer writes
  * (docs/IMPORTER.md). A game copied by hand has none and gets the default
  * runtime. Fills gi->problem when the game must not start. */
-static void read_manifest(const char *game, struct game_info *gi)
+void read_manifest(const char *game, struct game_info *gi)
 {
     char path[256], err[128];
     struct stat st;

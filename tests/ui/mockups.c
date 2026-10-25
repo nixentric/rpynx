@@ -448,6 +448,37 @@ int main(int argc, char **argv)
     settle();
     shot(out, "8-diagnostics");
 
+    g.screen = SCR_FTP;
+    snprintf(g.ftp_addr, sizeof g.ftp_addr, "192.168.1.20:5000");
+    g.ftp = (rsl_ftpd_status){ .running = true, .port = 5000, .connected = true, .client = "192.168.1.10",
+                               .file = "/games/.uploading-clockwork-garden/game/images/bg_station_night.webp",
+                               .files = 412, .bytes = 183400000, .expect = 412000000 };
+    settle();
+    shot(out, "14a-wifi");
+    g.ftp.connected = false;
+    g.ftp.client[0] = g.ftp.file[0] = '\0';
+    g.ftp.expect = 0;
+    snprintf(g.ftp.done, sizeof g.ftp.done, "clockwork-garden");
+    snprintf(g.ftp_title, sizeof g.ftp_title, "Clockwork Garden");
+    settle();
+    shot(out, "14b-wifi-done");
+    g.dialog_open = true;   /* as transfer.c opens it when the game arrives */
+    g.dialog_sel = ARRIVED_LIBRARY;
+    settle();
+    shot(out, "14d-wifi-arrived-popup");
+    g.dialog_open = false;
+    settle();
+    g.ftp_addr[0] = '\0';
+    memset(&g.ftp, 0, sizeof g.ftp);
+    snprintf(g.status, sizeof g.status, "Not connected to Wi-Fi: connect in System Settings, then open this page again.");
+    g.status_kind = ST_BAD;
+    g.screen = SCR_DIAG;   /* the page is built again, as when it is opened again */
+    settle();
+    g.screen = SCR_FTP;
+    settle();
+    shot(out, "14c-wifi-off");
+    g.status[0] = '\0';
+
     g.screen = SCR_HELP;
     settle();
     shot(out, "10a-how-to-play");

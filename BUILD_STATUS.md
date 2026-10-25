@@ -13,7 +13,7 @@ Last updated: 2026-10-23
 | 5 Importer | macOS importer: folder/ZIP/7z/RAR → compatibility report, `manifest.json`, SD export. Host-tested (25 tests). Its export of The Question launched on a Switch (run 9) |
 | 6 Gameplay reliability | **Done** (run 27). Verified on a Switch: quitting and starting another game no longer crashes (a stuck Ren'Py audio decode thread, runs 22–24); a game error shows the system error dialog and returns to the library (run 25); sleep and resume (runs 23–24); website links and folder buttons show a notice instead of failing (run 25); the D-pad reaches buttons whose boxes overlap (run 25); The Question's preferences with the SDK fonts (run 25). Desktop-tested only: game menus start on their side menu; no cursor after touch. Also verified (run 26): a remap used in a game (`input: confirm (X)`), save/load back to the same line (`script.rpy:72`), a custom screen to Done, HOME. The in-game emergency combo saves the defaults for the loader too, and games are refused in applet mode, the loader started from the Album, which crashed the whole console in runs 8 and 26 ([run 27](tests/hardware/results/2026-10-21-run27.md)). Still desktop-only: no cursor after touch; the full refusal text (status buffer fixed after run 27) |
 | 7 Game library | The LVGL loader ran on a Switch (first hardware test, 2026-10-22): first frame 80 ms after start, cores at 1 % when idle, SoC 36-38 °C, frames 11-17 ms. The user's review led to a second round (fonts measured so nothing is cut off, centred icons, bigger covers, a controller-shaped test screen, layout and accent pages, an illustrated How to play), built with 0 warnings (`.nro` 731 KB) and pushed for the second hardware test. Covers (2026-10-22): the importer makes them (menu art, or a picture chosen with `--cover` or in the desktop window), and *Change picture* on the Switch turns an Album screenshot into one; tested on the host, then on a Switch in [run 28](tests/hardware/results/2026-10-23-run28.md) (2026-10-23): covers and the placeholder, the layouts, the details page, the picture page and a saved cover, and a game launched and quit, all PASS. After that run the user dropped the Cinematic layout and every picture behind the UI: on the console, animating over a full-screen picture costs 22-35 ms a frame against 11-17 ms, and they did not want to pay it. The Row layout took Cinematic's shape (covers along the bottom, the game named above them), so the library now has Row and Grid (`.nro` 786 KB) |
-| Transfer (planned: after 7, before 8) | Built-in FTP server in the loader (the desktop importer's FTP client exists already), then USB transfer (libnx `usbComms` on the Switch, libusb on the desktop; tens of MB/s against ~1–2 MB/s over Wi-Fi). MTP is not planned: macOS has no MTP support, and an MTP responder such as haze is GPL, which would make the MIT loader GPL |
+| Transfer (after 7, before 8) | **FTP server built** (2026-10-25): + menu → *Add games over Wi-Fi* runs the loader's own server (`platform/transfer/ftpd.c`) while the page is open, reaching only `switch/renpy-loader/`, with a progress bar on the Switch (the importer announces the size with `ALLO`); the importer's FTP export, replace and delete pass against it on the host (`tests/unit/test_ftpd.py`), and on a Switch in [run 29](tests/hardware/results/2026-10-25-run29.md) (2026-10-25): a game sent, replaced and deleted from the command-line importer, the Switch's bar and "arrived" notice, B mid-transfer, all PASS; 2.64 MB/s up and 2.47 MB/s down for one big file, 0.7-0.8 MB/s for a game of small files. Not tried: the importer window with it, no Wi-Fi. Then, only if that speed falls short, USB transfer (libnx `usbComms` on the Switch, libusb on the desktop; tens of MB/s against ~1–2 MB/s over Wi-Fi). MTP is not planned: macOS has no MTP support, and an MTP responder such as haze is GPL, which would make the MIT loader GPL |
 | 8 Release validation | Not started |
 
 **Ren'Py 8.5.3 runs on a real Switch** (2026-10-18, run 5): "The Question" starts, renders
@@ -130,7 +130,7 @@ are still unverified on hardware. See
 | Runtime build | success, 0 warnings, static link with no unresolved symbols |
 | Ren'Py build | `scripts/build.sh renpy`: 60 modules / 73 objects in `librenpy.a`; 169 engine modules staged; 63 SDK common scripts digest-verified |
 | `dist/renpy-runtime.nro` | 61,535,482 bytes, sha256 `88c91423e7752b3e17e174fd2713ac13ef4c2dcf6fd1e3a9f8355e93751b831b` (runtime split, rpynx titles) |
-| `dist/renpy-loader.nro` | 785,926 bytes, sha256 `e5b9b847972f93fb430981788d43ab1d3c4b989cc48c55becf9c3f19fbaed089` (LVGL loader, covers, Change picture, rpynx titles, run 28's label fixes, no Cinematic and no pictures behind the UI, covers decoded from the frame after the first; run 28 itself tested `19c2f0ed…`, its 2026-10-25 follow-up `43398231…`, the same code before a comment changed) |
+| `dist/renpy-loader.nro` | 818,694 bytes, sha256 `27fd355ec1d773e8db319b44a80d24f3457cf684a0a62c843c37dd703d351256` (LVGL loader, covers, Change picture, rpynx titles, run 28's label fixes, no Cinematic and no pictures behind the UI, covers decoded from the frame after the first, Add games over Wi-Fi; run 29 tested `2e281ba9…`, before the speed line, the card fix and the "arrived" pop-up; run 28 itself tested `19c2f0ed…`, its 2026-10-25 follow-up `43398231…`, the same code before a comment changed) |
 | Reproducibility | loader: identical across two clean builds. Milestone 3 runtime: identical across two full rebuilds. Not re-checked for the Ren'Py runtime |
 | libnx layout check | `_Static_assert`s in `input_switch.c` pass |
 
@@ -148,7 +148,8 @@ switch-bzip2 1.0.8, switch-liblzma 5.8.2.
 | `runtime/python/selftest.py` against `python312.zip` only | Linux arm64 container, host CPython 3.12.8 | CPython 3.12.8 | 0 required failures | 0 failures (66 required checks) | PASS (host only) |
 | `tests/unit/test_horizon_paths.py` | Linux arm64 container, host CPython 3.12.8 | patched posixpath and importlib | 31 checks | 31 pass | PASS (host only) |
 | `tests/integration/renpy_desktop/run.sh` | Linux arm64 container, Xvfb + Mesa llvmpipe 22.3.6, GLES 3.2 | **official** Ren'Py 8.5.3 SDK + our `switch_main.py`/`rsl_bridge.py`, scripted `_rslnx` | 26 checks | 26 pass; screenshots in `build/test/out/` | PASS (desktop only) |
-| `tests/unit/test_importer.py` (25 tests, part of `scripts/test.sh`) | macOS host, `/usr/bin/python3` 3.9.6 | n/a | all pass | 25/25 | PASS |
+| `tests/unit/test_importer.py` + `test_importer_gui.py` (51 tests, part of `scripts/test.sh`) | macOS host, `/usr/bin/python3` 3.9.6 | n/a | all pass | 51/51 | PASS |
+| `tests/unit/test_ftpd.py` (4 tests, part of `scripts/test.sh`): the loader's FTP server driven by the importer | macOS host, Apple clang ASan + UBSan, `/usr/bin/python3` 3.9.6 | n/a | all pass | 4/4 | PASS (host only) |
 
 The desktop run found and fixed two bridge bugs before any hardware test:
 - the launcher module was named `renpy_*`, so Ren'Py tried to pickle it at startup;
@@ -213,7 +214,7 @@ itself. It does not prove anything about Horizon.
 - Ren'Py: save/reload (H31), smooth video playback (run 13), applet mode after
   the run 8 crash (H34), the full Switch keyboard (run 17 build).
 
-Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H50.
+Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H56.
 
 ## Known bugs and limitations
 
@@ -231,6 +232,9 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H50.
   the start is 86-94 ms (run 28, follow-up).
 - Still unverified on hardware (run 28): the touch drag of the cover frame, B from the Layout
   page, a game without a `manifest.json`, docked mode.
+- `logs/loader.log` cannot be read over the loader's own FTP server while the loader runs: the
+  Switch's file system refuses even `stat` on a file the process holds open (run 29). Read it over
+  sphaira afterwards.
 - The in-game loader overlay is not built; L-stick press only shows a notice.
 - Live2D and 3D models are unsupported.
 - Non-ASCII file names on the SD card (run 20): about half of Japanese names cannot be created,
@@ -240,7 +244,7 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H50.
 - devkitPro's switch-ffmpeg is built with `--enable-gpl` and linked statically, so a
   distributed `renpy-runtime.nro` is covered by the GPL (v2 or later): ship the source with
   it. Building FFmpeg as LGPL would need its own build and relinking materials.
-- The runtime `.nro` is 55 MB; no memory or load-time measurement on hardware yet.
+- The runtime `.nro` is 62 MB (61,535,482 bytes); no memory or load-time measurement on hardware yet.
 - The emergency combo needs both + and −, so a single detached Joy-Con cannot do it.
 - The launcher UI state machine has no automated test (it needs libnx); the engine under it is tested.
 - The runtime self-test writes console text from a second thread. The libnx console is not
@@ -266,8 +270,9 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H50.
 
 ## Next engineering tasks
 
-1. Milestone 7: hardware test of the LVGL loader (`docs/LOADER_UI.md`), with covers and
-   *Change picture*; then the step-by-step "how to play" guide in `docs/` with screenshots
-   from the console.
-2. Transfer: the loader's own FTP server, then USB.
+1. One Switch session: what run 28 left (H43, H45's touch drag, H47, docked mode) and run 29
+   (the importer window, no Wi-Fi), taking the screenshots for the guide on the way; then the
+   step-by-step "how to play" guide in `docs/` from them.
+2. Transfer: USB only if 0.7-0.8 MB/s for a game of small files (run 29) proves too slow; the
+   per-file cost, not Wi-Fi, sets it.
 3. Milestone 8: release validation.

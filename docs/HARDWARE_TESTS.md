@@ -111,5 +111,20 @@ result. LVGL logs one warning per JPEG decode, because it reads past the last ro
 picture is complete. A cover line about a progressive JPEG or an oversized picture is a real
 failure.
 
+## Transfer tests (Add games over Wi-Fi, the loader's FTP server)
+
+Setup: the Switch and the Mac on the same Wi-Fi; a game folder or archive on the Mac that is not on
+the Switch yet, ideally a few hundred MB, so the speed means something. `docs/LOADER_UI.md`, "Add
+games over Wi-Fi".
+
+| # | Test | Steps | Expected |
+|---|---|---|---|
+| H51 | The page | + menu → Add games over Wi-Fi | The address (`IP:5000`) in big type, "Waiting for the importer"; `loader.log`: `ftp: serving on …`. With Wi-Fi off (airplane mode): "No Wi-Fi" and the status line says to connect |
+| H52 | Send a game | In the importer window, *Switch over Wi-Fi*, the address, *Connect*, then *Export* | Both progress bars move: the window's and the Switch's ("X of Y MB"); the Switch shows the game's id and each file; at the end "Done", "<id>, received" and the pop-up "<title> arrived": *Go to the library* returns to the library, *Send another game* (or B) closes it |
+| H53 | Back to the library | B (Done) | The new game is in the library with its cover; `loader.log`: `ftp: stopped: …` and a new `library scan` |
+| H54 | Replace and delete | Export the same game again with *Replace*, then delete it from the window's library | Saves kept, no `.uploading-`/`.old-` folder left; after B the library no longer shows the deleted game |
+| H55 | Speed | Read `ftp: … sent … (Z MB/s; W MB/s while receiving)` | Note the MB/s next to sphaira's 1–2 MB/s; if lower, try a bigger `SOCK_BUF`/`FILE_BUF` in `ftpd.c` |
+| H56 | Leave mid-transfer | Start a big export, press B on the Switch half way | The page closes within a second; the importer reports the lost connection and removes `.uploading-<id>`; the library shows nothing half-sent |
+
 Later milestones add the gameplay tests from the project brief (new game, dialogue,
 choices, save/load loops, rollback, suspend during gameplay, soak tests).

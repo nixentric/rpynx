@@ -7,7 +7,8 @@ report and, with --out, an SD-ready tree:
     <out>/switch/renpy-loader/games/<id>/game/...
     <out>/switch/renpy-loader/games/<id>/manifest.json
 
---out ftp://HOST:PORT uploads the same tree to the Switch over sphaira's FTP server.
+--out ftp://HOST:PORT uploads the same tree to the Switch over FTP: the loader's own server
+(+ > Add games over Wi-Fi) or sphaira's.
 
 Standard library only; runs on Python 3.9+ on Windows, macOS (/usr/bin/python3) and
 Linux. This file is the command line; the code is the rsl/ package next to it (rsl/__init__.py
@@ -28,7 +29,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Analyse a Ren'Py game and export it for rpynx on the Switch.")
     ap.add_argument("source", help="game folder, .zip, .7z or .rar")
     ap.add_argument("--out", help="export root, e.g. the SD card, or ftp://HOST:PORT for the Switch over "
-                                  "sphaira's FTP server; writes switch/renpy-loader/games/<id>")
+                                  "FTP (the loader's Add games over Wi-Fi, or sphaira); writes switch/renpy-loader/games/<id>")
     ap.add_argument("--id", help="game id (folder name); default from the title")
     ap.add_argument("--replace", action="store_true", help="update an existing export (saves are kept)")
     ap.add_argument("--optimize", action="store_true",

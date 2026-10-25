@@ -11,7 +11,7 @@
  * and updating the current screen, focus, and the public functions.
  * ui_style.c holds the fonts and styles, ui_widgets.c the building blocks
  * and touch; the screens are ui_library.c, ui_detail.c, ui_picture.c,
- * ui_controls.c and ui_pages.c, the covers and backdrops ui_art.c. */
+ * ui_controls.c and ui_pages.c, the covers ui_art.c. */
 #include "ui_internal.h"
 
 struct ui_screen u;     /* objects of the current screen, reset when it is rebuilt */
@@ -47,6 +47,8 @@ static const hint picture_hints[] = {
 static const hint layout_hints[] = {
     { RSL_ACT_LEFT, RSL_ACT_RIGHT, "Choose / hue" }, { RSL_ACT_CONFIRM, -1, "Use" }, { RSL_ACT_BACK, -1, "Back" },
 };
+
+static const hint ftp_hints[] = { { RSL_ACT_BACK, -1, "Done" } };
 
 const char *const action_label[RSL_ACT_COUNT] = {
     "Confirm / advance", "Back / cancel", "Hide dialogue", "History", "Rollback",
@@ -152,11 +154,12 @@ static void build(void)
 {
     static const char *const titles[] = {
         "Library", "Game details", "Controller settings", "Controller test", "Diagnostics", "How to play",
-        "Layout", NULL,
+        "Layout", NULL, "Add games over Wi-Fi",
     };
     static const struct { const hint *h; int n; } footer[] = {
         { HINTS(lib_hints) }, { HINTS(detail_hints) }, { HINTS(remap_hints) }, { HINTS(test_hints) },
         { HINTS(diag_hints) }, { HINTS(help_hints) }, { HINTS(layout_hints) }, { HINTS(picture_hints) },
+        { HINTS(ftp_hints) },
     };
     bool first = !u.scr;
     lv_obj_t *s;
@@ -178,13 +181,14 @@ static void build(void)
     case SCR_HELP: build_help(s); break;
     case SCR_LAYOUT: build_layout(s); break;
     case SCR_PICTURE: build_picture(s); break;
+    case SCR_FTP: build_ftp(s); break;
     }
     for (int i = 0; i < u.count; i++)
         tappable_item(u.items[i], i);
     for (int i = 0; u.menu && i < MENU_COUNT && u.menu_items[i]; i++)
         tappable_item(u.menu_items[i], i);
-    if (u.dialog_ok)
-        tappable_item(u.dialog_ok, 0);
+    for (int i = 0; i < u.dialog_n; i++)
+        tappable_item(u.dialog_btn[i], i);
     u.scr = s;
     u.screen = g.screen;
     u.layout = g.layout;
@@ -243,6 +247,7 @@ void ui_update(void)
     case SCR_DIAG: update_diag(); break;
     case SCR_LAYOUT: update_layout(); break;
     case SCR_PICTURE: update_picture(); break;
+    case SCR_FTP: update_ftp(); break;
     default: break;
     }
     focus(u.items, u.count, &u.focused, g.sel, !u.fresh);
@@ -255,7 +260,7 @@ void ui_update(void)
     }
     if (u.dialog) {
         show(u.dialog, g.dialog_open, &u.dialog_shown);
-        focus(&u.dialog_ok, 1, &u.dialog_focused, g.dialog_open ? 0 : -1, false);
+        focus(u.dialog_btn, u.dialog_n, &u.dialog_focused, g.dialog_open ? g.dialog_sel : -1, false);
     }
     update_status();
     /* A saved mapping applies at once: the help line shows the new buttons. */

@@ -1,5 +1,5 @@
-/* Pages the + menu opens: how to play, and Layout (library layout,
- * backgrounds, accent colour). */
+/* Pages the + menu opens: how to play, Layout (library layout, accent
+ * colour) and Add games over Wi-Fi. */
 #include "ui_internal.h"
 
 /* How to play: what each button does in a game, with the user's own mapping. */
@@ -116,8 +116,9 @@ void build_help(lv_obj_t *s)
 
     /* 3. Adding games: computer, arrow, SD card. */
     art = guide_card(list, 2, "Adding games",
-                     "Export each game with the desktop importer on your computer, then copy it to "
-                     "switch/renpy-loader/games/ on the SD card. Its cover and details come with it.", NULL);
+                     "Export each game with the desktop importer on your computer: send it with + and "
+                     "Add games over Wi-Fi, or copy it to switch/renpy-loader/games/ on the SD card. Its "
+                     "cover and details come with it.", NULL);
     o = shape(art, 24, 40, 130, 84, BG, LV_OPA_COVER, 8);              /* laptop screen */
     lv_obj_set_style_border_color(o, lv_color_hex(DIM), 0);
     lv_obj_set_style_border_width(o, 3, 0);
@@ -132,8 +133,8 @@ void build_help(lv_obj_t *s)
 
     /* 4. The + menu: layouts and colours. */
     art = guide_card(list, 3, "Make it yours",
-                     "Press + in the library for the menu: in Layout, choose Row or Grid, "
-                     "the game backgrounds and the accent colour; or test your controller.", NULL);
+                     "Press + in the library for the menu: in Layout, choose Row or Grid and the "
+                     "accent colour; or test your controller.", NULL);
     for (int k = 0; k < 4; k++) {
         o = shape(art, 26 + k * 64 - (k == 1 ? 6 : 0), k == 1 ? 18 : 26, k == 1 ? 60 : 48, k == 1 ? 88 : 72,
                   tint(k), LV_OPA_COVER, 8);
@@ -298,4 +299,115 @@ void update_layout(void)
         int d = (g.accent_hue - ERROR_HUE + 540) % 360 - 180;
         lv_obj_set_hidden(u.warn, d < -25 || d > 25 || g.accent != ui_hue_color(g.accent_hue));
     }
+}
+
+/* ---------------------------------------------------- add games over Wi-Fi */
+
+static const hint arrived_hints[] = {
+    { RSL_ACT_LEFT, RSL_ACT_RIGHT, "Choose" }, { RSL_ACT_CONFIRM, -1, "Select" }, { RSL_ACT_BACK, -1, "Close" },
+};
+
+/* "Game arrived", over the page when the importer has moved a game into
+ * place: go and play it, or stay for the next one. */
+static void build_arrived(lv_obj_t *s)
+{
+    lv_obj_t *c = dialog_card(s);
+    u.arrived_title = label(c, f_l, GREEN, "");
+    para(c, f_m, TEXT, "It is on the SD card now. Go to the library to play it, or stay here and send "
+                       "another game from the importer.");
+    lv_obj_t *row = flex(c, LV_FLEX_FLOW_ROW, 20);
+    make_room(row);
+    u.dialog_btn[ARRIVED_MORE] = button(row, "Send another game", 300);
+    u.dialog_btn[ARRIVED_LIBRARY] = button(row, "Go to the library", 300);
+    u.dialog_n = ARRIVED_COUNT;
+    hints(flex(c, LV_FLEX_FLOW_ROW, 28), HINTS(arrived_hints));
+}
+
+/* The address to type into the importer, and what the server is doing:
+ * transfer.c copies its state into g.ftp every frame, and only what changed
+ * is redrawn. Without Wi-Fi the status line says why. */
+void build_ftp(lv_obj_t *s)
+{
+    bool on = g.ftp_addr[0];
+    lv_obj_t *c = card(s, NULL, MARGIN, BODY_Y, W - 2 * MARGIN, LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_row(c, 12, 0);
+    label(c, f_m, DIM, "Address for the importer");
+    label(c, f_hero, on ? TEXT : RED, on ? g.ftp_addr : "No Wi-Fi");
+    u.ftp_note = note(c, GREEN, "");   /* shown when a game has arrived */
+    lv_obj_set_style_text_font(lv_obj_get_child(u.ftp_note, 0), f_l, 0);
+    lv_obj_set_hidden(u.ftp_note, true);
+    if (on)   /* hidden while the note shows: with the console's font both do not fit */
+        u.ftp_help = para(c, f_m, DIM, "On your computer, open the rpynx importer, enter this address under "
+                                       "Switch over Wi-Fi (FTP) and send your games. Keep this page open until "
+                                       "they are sent: when you leave it, the library shows them.");
+    u.ftp_state = pill(fact(c, "Server"), DIM, "");
+    u.ftp_game = label(fact(c, "Game"), f_m, TEXT, "");
+    lv_obj_t *v = fact(c, "Progress");
+    lv_obj_set_flex_align(v, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    u.ftp_bar = meter(v, 600);
+    lv_bar_set_range(u.ftp_bar, 0, 1000);
+    u.ftp_progress = label(v, f_m, TEXT, "");
+    u.ftp_file = label(fact(c, "File"), f_m, TEXT, "");
+    lv_obj_set_width(u.ftp_file, 900);
+    lv_label_set_long_mode(u.ftp_file, LV_LABEL_LONG_MODE_DOTS);
+    u.ftp_count = label(fact(c, "In all"), f_m, TEXT, "");
+    build_arrived(s);
+    update_ftp();
+}
+
+void update_ftp(void)
+{
+    const rsl_ftpd_status *f = &g.ftp;
+    char state[64];
+    uint32_t color = !g.ftp_addr[0] ? DIM : !f->running ? RED : f->connected ? GREEN : DIM;
+    snprintf(state, sizeof state, "%s%s", !g.ftp_addr[0] ? "Off" : !f->running ? "Stopped" :
+             f->connected ? "Connected to " : "Waiting for the importer", f->running ? f->client : "");
+    if (strcmp(lv_label_get_text(u.ftp_state), state)) {
+        lv_label_set_text(u.ftp_state, state);
+        lv_obj_set_style_text_color(u.ftp_state, lv_color_hex(color), 0);
+        lv_obj_set_style_bg_color(u.ftp_state, lv_color_hex(color), 0);
+    }
+    /* The game: the importer uploads into games/.uploading-<id>/ after
+     * announcing the size (ftpd.h), and renames that folder when it is done. */
+    const char *up = strstr(f->file, "/.uploading-");
+    if (u.ftp_from != f->expect_from || !f->expect) {
+        u.ftp_from = f->expect_from;
+        u.ftp_id[0] = '\0';
+    }
+    if (up)
+        snprintf(u.ftp_id, sizeof u.ftp_id, "%.*s", (int)strcspn(up + 12, "/"), up + 12);
+    if (u.ftp_id[0])
+        set_text(u.ftp_game, u.ftp_id);
+    else if (f->done[0])
+        set_textf(u.ftp_game, "%s, received", f->done);
+    else
+        set_text(u.ftp_game, "none");
+    uint64_t got = f->bytes - f->expect_from;
+    int32_t permille = !f->expect ? (f->done[0] ? 1000 : 0) : got >= f->expect ? 1000 : (int32_t)(got * 1000 / f->expect);
+    lv_bar_set_value(u.ftp_bar, permille, LV_ANIM_OFF);
+    if (f->expect)
+        set_textf(u.ftp_progress, "%.1f of %.1f MB", (double)got / 1e6, (double)f->expect / 1e6);
+    else
+        set_text(u.ftp_progress, f->done[0] ? "Done" : "");
+
+    /* Until the next upload starts (ALLO clears done). */
+    bool arrived = f->done[0] && g.ftp_title[0];
+    if (arrived) {
+        set_textf(lv_obj_get_child(u.ftp_note, 0), "%s arrived. Press B to see it in the library, or send "
+                  "another game.", g.ftp_title);
+        set_textf(u.arrived_title, "%s arrived", g.ftp_title);
+    }
+    if (arrived != u.ftp_note_shown) {
+        u.ftp_note_shown = arrived;
+        lv_obj_set_hidden(u.ftp_note, !arrived);
+        if (u.ftp_help)
+            lv_obj_set_hidden(u.ftp_help, arrived);
+        if (arrived)
+            lv_obj_fade_in(u.ftp_note, 200, 0);
+    }
+
+    const char *name = strrchr(f->file, '/');
+    set_text(u.ftp_file, name ? name + 1 : "none");
+    set_textf(u.ftp_count, f->files == 1 ? "%u file, %.1f MB" : "%u files, %.1f MB", f->files,
+              (double)f->bytes / 1e6);
 }

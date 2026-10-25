@@ -202,14 +202,7 @@ void build_diag(lv_obj_t *s)
         label(c, f_s, AMBER, "Games need full memory: hold R while starting an installed game.");
     label(fact(c, "Display"), f_m, TEXT, g.mode);
     lv_obj_t *v = fact(c, "Memory");
-    u.mem_bar = lv_bar_create(v);
-    lv_obj_set_size(u.mem_bar, 180, 10);
-    lv_obj_set_style_radius(u.mem_bar, 5, LV_PART_MAIN);
-    lv_obj_set_style_radius(u.mem_bar, 5, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(u.mem_bar, lv_color_hex(SURFACE_HI), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(u.mem_bar, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(u.mem_bar, lv_color_hex(ACCENT), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(u.mem_bar, LV_OPA_COVER, LV_PART_INDICATOR);
+    u.mem_bar = meter(v, 180);
     u.mem_text = label(v, f_m, TEXT, "");
     v = fact(c, "SD folder");
     pill(v, g.sd_ok ? GREEN : RED, g.sd_ok ? "Writable" : "Not writable");

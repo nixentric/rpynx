@@ -753,6 +753,9 @@ class FakeFTP:
     def login(self):
         pass
 
+    def voidcmd(self, cmd):
+        raise ftplib.error_perm("502 Command not implemented.")   # ALLO: sphaira has no progress bar
+
     def close(self):
         pass
 

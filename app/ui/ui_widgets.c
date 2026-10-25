@@ -103,6 +103,20 @@ void set_textf(lv_obj_t *l, const char *fmt, ...)
     set_text(l, buf);
 }
 
+/* A thin bar, w wide, filled in the accent: memory use, a transfer. */
+lv_obj_t *meter(lv_obj_t *parent, int w)
+{
+    lv_obj_t *b = lv_bar_create(parent);
+    lv_obj_set_size(b, w, 10);
+    lv_obj_set_style_radius(b, 5, LV_PART_MAIN);
+    lv_obj_set_style_radius(b, 5, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(b, lv_color_hex(SURFACE_HI), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(b, lv_color_hex(ACCENT), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_PART_INDICATOR);
+    return b;
+}
+
 /* A tag ("Experimental", "Handheld", ...): text in color on a 20 % tint. */
 lv_obj_t *pill(lv_obj_t *parent, uint32_t color, const char *text)
 {
@@ -218,6 +232,21 @@ lv_obj_t *overlay(lv_obj_t *parent)
     tappable(o, action_tapped, RSL_ACT_BACK);   /* a tap beside the panel closes it */
     lv_obj_set_hidden(o, true);
     return o;
+}
+
+/* A card in the middle of a dimmed screen, shown while g.dialog_open: a
+ * notice or a question (u.dialog, its buttons u.dialog_btn). */
+lv_obj_t *dialog_card(lv_obj_t *s)
+{
+    u.dialog = overlay(s);
+    lv_obj_t *c = flex(u.dialog, LV_FLEX_FLOW_COLUMN, 18);
+    lv_obj_add_style(c, &st_card, 0);
+    lv_obj_set_style_pad_all(c, 32, 0);
+    lv_obj_set_width(c, 700);
+    lv_obj_center(c);
+    lv_obj_set_clickable(c, true);   /* a tap on the card is not one beside it */
+    lv_obj_set_click_focusable(c, false);
+    return c;
 }
 
 /* What is printed on controller button b where there is no icon. */

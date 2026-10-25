@@ -14,7 +14,7 @@ third_party/lvgl/fetch.sh
 make -s -j8 -f third_party/lvgl/Makefile OUT=build/host/lvgl CC=cc AR=ar \
     CFLAGS="-O2 -g -Wno-unused-function"
 cc -std=gnu11 -g -O1 -Wall -Wextra -Werror -fsanitize=address,undefined \
-    -Iapp/ui -Iapp/launcher -Iapp/diagnostics -Iplatform/input -Iplatform/filesystem -Ithird_party/lvgl \
+    -Iapp/ui -Iapp/launcher -Iapp/diagnostics -Iplatform/input -Iplatform/filesystem -Iplatform/transfer -Ithird_party/lvgl \
     -Ibuild/lvgl/lvgl tests/ui/mockups.c app/ui/ui*.c app/diagnostics/log.c platform/input/input.c \
     platform/filesystem/fs.c \
     build/host/lvgl/liblvgl.a -lm -o "$out/mockups"

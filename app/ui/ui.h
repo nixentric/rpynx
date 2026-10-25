@@ -15,7 +15,7 @@ void ui_init(const void *ttf, size_t ttf_len, const void *icons, size_t icons_le
  * changed, and decodes at most one cover per call. */
 void ui_update(void);
 
-/* Nothing pending: no animation, no cover or backdrop waiting to be decoded. */
+/* Nothing pending: no animation, no cover waiting to be decoded. */
 bool ui_idle(void);
 void ui_cover_counts(int *decoded, int *failed);
 
@@ -23,14 +23,14 @@ void ui_cover_counts(int *decoded, int *failed);
 void ui_scroll(int dir);
 
 /* Picture page: the part x, y, w x h of g.shot scaled into out, ow x oh
- * XRGB8888 of the same aspect. What becomes a cover or a backdrop. */
+ * XRGB8888 of the same aspect. What becomes a cover. */
 void ui_shot_part(int x, int y, int w, int h, uint32_t *out, int ow, int oh);
 
 /* Picture page: a finger on the screenshot since the last call; *x is where
  * the cover frame's left edge goes, its middle under the finger (unclamped). */
 bool ui_frame_drag(int *x);
 
-/* Game i's cover or backdrop file changed: decode it again. */
+/* Game i's cover file changed, or the library was read again: decode it again. */
 void ui_art_changed(int i);
 
 /* The last tap on the touchscreen, once: the action it asks for (-1 if

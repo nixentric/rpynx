@@ -5,6 +5,7 @@
 static const hint menu_hints[] = { { RSL_ACT_CONFIRM, -1, "Select" }, { RSL_ACT_BACK, -1, "Close" } };
 
 static const char *const menu_text[MENU_COUNT][2] = {
+    { "Add games over Wi-Fi", "Receive games from the importer" },
     { "Controller settings", "Buttons, sticks, repeat speed" },
     { "Controller test", "See buttons, sticks and actions live" },
     { "Layout", NULL },   /* subtitle: the current settings */
@@ -199,8 +200,8 @@ void build_library(lv_obj_t *s)
         lv_obj_t *col = flex(s, LV_FLEX_FLOW_COLUMN, 12);
         lv_obj_set_flex_align(col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
         label(col, f_l, TEXT, "No games yet");
-        lv_obj_t *t = label(col, f_m, DIM, "Export a game with the importer and copy its folder to\n"
-                                           GAMES_DIR "/\nSee docs/INSTALL.md.");
+        lv_obj_t *t = label(col, f_m, DIM, "Send a game from the importer: press + and choose Add games over Wi-Fi.\n"
+                                           "Or copy its exported folder to " GAMES_DIR "/");
         lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_line_space(t, 8, 0);
         lv_obj_align(col, LV_ALIGN_CENTER, 0, 0);

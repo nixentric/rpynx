@@ -42,6 +42,7 @@ void go(screen_id s)
     g.capture = -1;
     g.status[0] = '\0';
     g.menu_open = g.dialog_open = false;
+    g.dialog_sel = 0;
 }
 
 void go_library(void)
@@ -60,6 +61,7 @@ static void menu_action(rsl_action a)
     case RSL_ACT_CONFIRM:
         m.lib_sel = g.sel;
         switch (g.menu_sel) {
+        case MENU_FTP: open_ftp(); break;
         case MENU_REMAP: open_remap(GLOBAL_CFG, "Global", false, SCR_LIBRARY); break;
         case MENU_TEST: go(SCR_TEST); g.evcount = 0; break;
         case MENU_DIAG: go(SCR_DIAG); break;
@@ -115,7 +117,7 @@ static void library_action(rsl_action a)
 }
 
 /* The Layout page: left/right within a line (on the hue row: the hue, live),
- * up/down between the lines, confirm uses. Layout, background and presets
+ * up/down between the lines, confirm uses. Layout and presets
  * are saved at once; the custom hue on confirm or when the page is left. */
 static void layout_action(rsl_action a)
 {
@@ -227,6 +229,21 @@ static void on_action(rsl_action a)
             go_library();
         }
         break;
+    case SCR_FTP:
+        if (g.dialog_open) {   /* "game arrived": left/right, A uses, B sends another */
+            if (a == RSL_ACT_LEFT)
+                g.dialog_sel = ARRIVED_MORE;
+            else if (a == RSL_ACT_RIGHT)
+                g.dialog_sel = ARRIVED_LIBRARY;
+            else if (a == RSL_ACT_BACK || (a == RSL_ACT_CONFIRM && g.dialog_sel == ARRIVED_MORE))
+                g.dialog_open = false;
+            else if (a == RSL_ACT_CONFIRM)
+                close_ftp(), go_library();
+        } else if (a == RSL_ACT_BACK) {
+            close_ftp();
+            go_library();
+        }
+        break;
     case SCR_TEST:
         break;
     }
@@ -250,7 +267,9 @@ static void tap(int a, int item)
     if (item >= 0) {
         if (g.menu_open)
             g.menu_sel = item;
-        else if (!g.dialog_open)
+        else if (g.dialog_open)
+            g.dialog_sel = item;
+        else
             g.sel = item;
         if (g.screen == SCR_HELP)
             return;
@@ -309,6 +328,7 @@ void frame(float dt)
     if (g.capture < 0 && (tapped >= 0 || item >= 0))
         tap(tapped, item);
     picture_tick();
+    ftp_tick();
     if (g.screen == SCR_TEST) {
         if (!rsl_action_active(&g.in, RSL_ACT_BACK))
             m.back_held = false;

@@ -44,7 +44,7 @@ static struct {
 
 static const char *const screen_name[] = {
     "library", "details", "controller settings", "controller test", "diagnostics", "how to play",
-    "layout", "picture",
+    "layout", "picture", "add games over Wi-Fi",
 };
 
 static uint32_t now_ms(void)
@@ -331,6 +331,7 @@ int main(int argc, char **argv)
             svcSleepThread((u64)(FRAME_MS - spent) * 1000000ULL);
     }
 
+    close_ftp();   /* closed from HOME on its page */
     int decoded, failed;
     ui_cover_counts(&decoded, &failed);
     rsl_log("ui exit: %u frames drawn, heap %u KiB in use, %u KiB peak, covers %d decoded, %d failed",

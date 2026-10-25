@@ -110,24 +110,24 @@ class ApiTest(unittest.TestCase):
         src = make_game(os.path.join(self.tmp, "FakeQuest"))
         picture(os.path.join(src, "game", "gui", "main_menu.png"), "red")
         r = self.api.analyze(src)
-        self.assertEqual(sorted(r["art"]), ["backdrop", "cover"])
+        self.assertEqual(sorted(r["art"]), ["cover"])
         self.assertTrue(r["art"]["cover"].startswith("data:image/jpeg;base64,/9j/"))
-        self.assertIn("Pictures: cover.jpg, backdrop.jpg", r["report"])
+        self.assertIn("Pictures: cover.jpg", r["report"])
 
         poster = picture(os.path.join(self.tmp, "poster.png"), "blue", "600x900")
         r = self.api.choose_art("cover", poster)
-        self.assertIn("Pictures: cover.jpg (chosen), backdrop.jpg", r["report"])
+        self.assertIn("Pictures: cover.jpg (chosen)", r["report"])
         before = r["art"]
-        self.assertIn("backdrop %s" % os.path.join(self.tmp, "gone.png"),
-                      self.api.choose_art("backdrop", os.path.join(self.tmp, "gone.png"))["error"])
+        self.assertIn("cover %s" % os.path.join(self.tmp, "gone.png"),
+                      self.api.choose_art("cover", os.path.join(self.tmp, "gone.png"))["error"])
         self.assertEqual(self.api._previews(), before, "a refused picture changes nothing")
 
         dest = self.api.export(self.sd)["dest"]
-        self.assertEqual(sorted(os.listdir(dest)), ["backdrop.jpg", "cover.jpg", "game", "manifest.json"])
+        self.assertEqual(sorted(os.listdir(dest)), ["cover.jpg", "game", "manifest.json"])
         self.assertEqual(self.api.art(self.sd, "fake-quest"), before)
-        r = self.api.set_art(self.sd, "fake-quest", "backdrop", poster)
-        self.assertNotEqual(r["backdrop"], before["backdrop"])
-        self.assertEqual(r["cover"], before["cover"])
+        r = self.api.set_art(self.sd, "fake-quest", "cover", picture(os.path.join(self.tmp, "green.png"), "green",
+                                                                     "600x900"))
+        self.assertNotEqual(r["cover"], before["cover"])
         write(os.path.join(self.games, "by-hand", "game", "script.rpy"), "label start:\n")
         self.assertIn("no manifest.json", self.api.set_art(self.sd, "by-hand", "cover", poster)["error"])
         self.assertEqual(self.api.art(self.sd, "by-hand"), {})

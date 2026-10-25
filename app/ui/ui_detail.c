@@ -13,14 +13,7 @@ static const hint detail_scroll_hints[] = {
 static void build_dialog(lv_obj_t *s)
 {
     char text[400];
-    u.dialog = overlay(s);
-    lv_obj_t *c = flex(u.dialog, LV_FLEX_FLOW_COLUMN, 18);
-    lv_obj_add_style(c, &st_card, 0);
-    lv_obj_set_style_pad_all(c, 32, 0);
-    lv_obj_set_width(c, 700);
-    lv_obj_center(c);
-    lv_obj_set_clickable(c, true);   /* a tap on the notice is not one beside it */
-    lv_obj_set_click_focusable(c, false);
+    lv_obj_t *c = dialog_card(s);
     label(c, f_l, RED, "Games need full memory");
     snprintf(text, sizeof text, "The loader was opened from the Album, as an applet with only %llu MiB of "
              "memory. Ren'Py games crash the whole console in this mode, so they do not start here.\n\n"
@@ -29,7 +22,8 @@ static void build_dialog(lv_obj_t *s)
     para(c, f_m, TEXT, text);
     lv_obj_t *row = flex(c, LV_FLEX_FLOW_ROW, 20);
     make_room(row);
-    u.dialog_ok = button(row, "OK", 240);
+    u.dialog_btn[0] = button(row, "OK", 240);
+    u.dialog_n = 1;
     hints(flex(c, LV_FLEX_FLOW_ROW, 28), HINTS(dialog_hints));
 }
 

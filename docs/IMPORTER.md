@@ -132,7 +132,8 @@ built app, which needs no Python at all (see "Building the app").
   - *SD card*: choose its top folder, `E:\` on Windows or `/Volumes/<name>` on macOS. A
     mounted drive that already has a `switch/` folder is offered, and chosen if it is the
     only one.
-  - *Switch over Wi-Fi (FTP)*: type the address sphaira shows, for example
+  - *Switch over Wi-Fi (FTP)*: type the address the loader's *Add games over Wi-Fi* page
+    (or sphaira) shows, for example
     `192.168.1.20:5000`, and press *Connect*. The library is read from the Switch, and
     *Export* uploads to it, with the same progress bar (the status line also shows how much
     of a large file is sent) and *Cancel*, which stops within the current file.
@@ -252,10 +253,14 @@ What the loader shows for a game (docs/LOADER_UI.md "Covers"):
 
 ## Switch over FTP
 
-The window's *Switch over Wi-Fi* target and `--out ftp://HOST:PORT` use sphaira's FTP
-server on the Switch (anonymous; port 5000 unless you give another). Turn it on in sphaira
-first. It stops while the loader or a game runs, and its address comes from the router, so
-it can change. `/` on that server is the SD card. Only Python's `ftplib` is used.
+The window's *Switch over Wi-Fi* target and `--out ftp://HOST:PORT` need an FTP server on
+the Switch (anonymous; port 5000 unless you give another), where `/` is the SD card:
+- the loader's own: press + in the library and open *Add games over Wi-Fi*. It serves while
+  that page is open and reaches only `switch/renpy-loader/`; leaving the page reads the
+  library again (`platform/transfer/ftpd.c`, [LOADER_UI.md](LOADER_UI.md));
+- or sphaira's, which stops while the loader or a game runs.
+
+The address comes from the router, so it can change. Only Python's `ftplib` is used.
 
 How an upload works:
 1. If `games/<id>` exists and *Replace* (`--replace`) is off, nothing is sent.

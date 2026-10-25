@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "ftpd.h"
 #include "input.h"
 #include "input_config.h"
 
@@ -20,13 +21,14 @@
 #define RUNTIME_NRO ROOT "/runtimes/renpy-runtime.nro"
 #define MAX_GAMES   64
 
-typedef enum { SCR_LIBRARY, SCR_DETAIL, SCR_REMAP, SCR_TEST, SCR_DIAG, SCR_HELP, SCR_LAYOUT, SCR_PICTURE } screen_id;
+typedef enum { SCR_LIBRARY, SCR_DETAIL, SCR_REMAP, SCR_TEST, SCR_DIAG, SCR_HELP, SCR_LAYOUT, SCR_PICTURE,
+               SCR_FTP } screen_id;
 
 /* Rows of the controller settings screen: one per action, then these. */
 enum { ROW_DEADZONE = RSL_ACT_COUNT, ROW_SPEED, ROW_ACCEL, ROW_DELAY, ROW_INTERVAL,
        ROW_STICKS, ROW_CURSOR_VIS, ROW_COUNT };
 
-enum { MENU_REMAP, MENU_TEST, MENU_LAYOUT, MENU_HELP, MENU_DIAG, MENU_EXIT, MENU_COUNT };   /* + menu */
+enum { MENU_FTP, MENU_REMAP, MENU_TEST, MENU_LAYOUT, MENU_HELP, MENU_DIAG, MENU_EXIT, MENU_COUNT };   /* + menu */
 enum { LAYOUT_ROW, LAYOUT_GRID, LAYOUT_COUNT };   /* library layouts, docs/LOADER_UI.md */
 /* Layout page (+ menu): the library layouts, the accent colour presets,
  * then the custom hue row. */
@@ -34,6 +36,7 @@ enum { ACCENT_PRESETS = 8 };
 enum { SET_PRESET = LAYOUT_COUNT, SET_CUSTOM = SET_PRESET + ACCENT_PRESETS, SET_COUNT };
 enum { HELP_COUNT = 5 };                                          /* how-to-play cards */
 enum { DETAIL_LAUNCH, DETAIL_CONTROLS, DETAIL_PICTURE, DETAIL_COUNT };   /* detail buttons, right to left */
+enum { ARRIVED_LIBRARY, ARRIVED_MORE, ARRIVED_COUNT };   /* "game arrived" buttons, right to left */
 
 typedef enum { ST_INFO, ST_OK, ST_BAD } status_kind;
 
@@ -58,7 +61,8 @@ typedef struct {
     int sel;                       /* focused item on the current screen */
     int game;                      /* game of the detail page / per-game controls */
     bool menu_open;                /* the + menu, over the library */
-    bool dialog_open;              /* applet-mode notice: games do not start in applet mode */
+    bool dialog_open;              /* applet-mode notice (details), or "game arrived" (Wi-Fi page) */
+    int dialog_sel;                /* its focused button: 0, or ARRIVED_* */
     int menu_sel;
     char status[512];             /* the applet-mode refusal was ~260 chars (run 27) */
     status_kind status_kind;
@@ -90,6 +94,12 @@ typedef struct {
     unsigned shot_gen;             /* changes with every screenshot loaded into shot */
     char shot_date[32];            /* when it was taken */
     int crop_x;                    /* left edge of the cover's frame (2:3, full height) in it */
+
+    /* Add games over Wi-Fi (+ menu): the loader's FTP server, its state
+     * copied in by transfer.c every frame while the page is open. */
+    char ftp_addr[24];             /* what to type into the importer, "" without Wi-Fi */
+    rsl_ftpd_status ftp;
+    char ftp_title[96];            /* title of g.ftp.done, the game that just arrived */
 
     /* Facts about the console, filled in by main.c. */
     bool sd_ok, full_memory, pad_connected, runtime_found;

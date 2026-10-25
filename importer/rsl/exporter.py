@@ -156,6 +156,11 @@ def ftp_export(manifest, gamedir, files, out, replace, extra, progress, art):
         if ".uploading-" + gid in have:
             ftp.rmtree(stage)   # a cancelled or failed upload; it never holds saves
         keep = keep_chosen(manifest, art, library_game(ftp, gid)) if gid in have else []
+        # The sources' size: what is sent, give or take a re-encoded video and the archive index.
+        extra = extra or {}
+        ftp.announce(sum(os.path.getsize(extra.get(rel) or os.path.join(gamedir, *rel.split("/")))
+                         for rel in dict.fromkeys([r for r, _ in files] + sorted(extra)))
+                     + sum(os.path.getsize(p) for p in art.values()))
         try:
             work = tempfile.mkdtemp(prefix="rsl-import-")
             try:

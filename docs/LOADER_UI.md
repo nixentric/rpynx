@@ -2,7 +2,7 @@
 
 The graphical game library that replaced the libnx text console of the loader.
 
-Status (2026-10-22):
+Status (2026-10-25):
 - Mockups approved; phase 2 built; first hardware test done (screenshots and `ui` log lines).
 - Second round, from the user's review of that test: fonts measured so nothing is cut off, icons centred
   on the text, bigger covers, a controller-shaped test screen, pages for the library layout
@@ -12,9 +12,12 @@ Status (2026-10-22):
   touch as well.
 - Covers (2026-10-22): the importer makes them from the game's menu art or a chosen
   picture, in the desktop window too; on the Switch, *Change picture* on the details turns an Album
-  screenshot into either (see "Covers"). Host mockups `13a` to `13d`; not run on hardware yet.
-- Builds with 0 warnings; `.nro` 764 KB (363 KB with the text console). Second hardware test pending.
-- Code: `app/launcher/` (main.c, actions.c, library.c, controls.c, art.c) and `app/ui/`: ui.c (the
+  screenshot into a cover (see "Covers"). Hardware run 28 (2026-10-23) passed the rounds above and
+  the covers; after it the Cinematic layout and the pictures behind the UI were dropped.
+- Add games over Wi-Fi (2026-10-25): the + menu's page runs the loader's own FTP server for the
+  desktop importer (see "Add games over Wi-Fi"). On a Switch in run 29 (2026-10-25).
+- Builds with 0 warnings; `.nro` 819 KB.
+- Code: `app/launcher/` (main.c, actions.c, library.c, controls.c, art.c, transfer.c) and `app/ui/`: ui.c (the
   screen frame, building and updating screens), ui_style.c (fonts, styles, accent), ui_widgets.c
   (building blocks, touch), ui_art.c (covers), and one file per screen group:
   ui_library.c, ui_detail.c, ui_picture.c, ui_controls.c, ui_pages.c.
@@ -57,11 +60,10 @@ Mockups: `scripts/mockups.sh` writes `build/host/mockups/*.png` (1280×720, the 
 
 | Screen | Content |
 |---|---|
-| Library (home), Row layout (default) | Like the Switch HOME menu: one line of 220×330 portrait covers that scrolls sideways. The focused cover is 12 % bigger; below the row are its title, status, Ren'Py version, runtime, and the reason it cannot start (or its number of performance issues) |
 | Library, Grid layout | Five portrait covers per row with titles, scrolling up and down |
-| Library, Row layout | One line of portrait covers along the bottom, scrolling sideways; the focused game's big white title (48 px) and its tags above them, no header line and no game count. The focused cover is 12 % larger. Mockups `1a`, `1b`, `1d` |
-| Library, all layouts | Badges: red `!` (cannot start), amber `!` (performance issues). Header: game count, Handheld/Docked, an amber "Applet mode" chip. Red/amber banners for a read-only SD folder or a controller file loaded from backup. Empty library: where to copy games |
-| Menu (+ on the library) | Panel that slides in from the right: Controller settings, Controller test, Layout (its subtitle: the layout and accent in use), How to play, Diagnostics, Exit to the Homebrew Menu. The items scroll when they do not fit; the help (A, B) stays at the bottom under a rule. Moving the focus scrolls every list it is in; on a list's first line, all the way up so its heading shows |
+| Library, Row layout (default) | One line of portrait covers along the bottom, scrolling sideways; the focused game's big white title (48 px) and its tags above them, no header line and no game count. The focused cover is 12 % larger. Mockups `1a`, `1b`, `1d` |
+| Library, all layouts | Badges: red `!` (cannot start), amber `!` (performance issues). Header: game count, Handheld/Docked, an amber "Applet mode" chip. Red/amber banners for a read-only SD folder or a controller file loaded from backup. Empty library: Add games over Wi-Fi, or where to copy games |
+| Menu (+ on the library) | Panel that slides in from the right: Add games over Wi-Fi, Controller settings, Controller test, Layout (its subtitle: the layout and accent in use), How to play, Diagnostics, Exit to the Homebrew Menu. The items scroll when they do not fit; the help (A, B) stays at the bottom under a rule. Moving the focus scrolls every list it is in; on a list's first line, all the way up so its heading shows |
 | How to play | Shown once on the first start, then from the + menu. An illustrated guide in five cards that scrolls (up/down): the buttons in a game (from the user's current mapping), starting with full memory, adding games, the + menu, the emergency combo. Each card has a small drawing made of shapes. A or B closes it |
 | Layout (+ menu) | One scrolling page. Library: Row and Grid side by side, each card split in half, a white wireframe preview on the left and its name and a short description on the right, "In use" on the current one; A uses the focused one. Colour: eight presets and a custom hue strip (left/right, live); a hue within 25° of the error red shows a warning beside the heading. The page follows a new accent live, without a rebuild. B goes back to the library, menu closed, like every page the + menu opens. Mockups `11`, `12a`, `12b`, `12c` |
 | Game details (A on a cover) | Big cover; title, folder, Ren'Py version, status, runtime and whether it is installed; notes for Ren'Py 7 recompiled games, the reason a game cannot start, and up to three performance issues; these scroll (up/down) when they run longer than the room. Buttons, always at the bottom right: Change picture, Controls for this game, then Launch with a play icon (Can't launch when there is a problem). Mockups `3`, `3b`, `3c`, `4` |
@@ -70,6 +72,7 @@ Mockups: `scripts/mockups.sh` writes `build/host/mockups/*.png` (1280×720, the 
 | Controller settings | Global or per-game. One row per action with its buttons as chips, conflicts in red, "Press a button ... 5 s" while assigning; then deadzone, cursor speed and acceleration, repeat delay and interval, sticks, cursor visibility. Header: profile, preset, Unsaved |
 | Controller test | The buttons laid out as on the controller (shoulder buttons on top, D-pad and A/B/X/Y as crosses, the sticks between), lit in the accent while pressed; the logical actions; touch, cursor and the last 6 events |
 | Diagnostics | Applet type, display, memory bar, SD folder, controller file, runtime; the recent log; Run Python self-test |
+| Add games over Wi-Fi (+ menu) | The address to type into the importer (`192.168.1.20:5000`, big), what to do, then the server (waiting, connected to the computer, stopped), the game being received with a progress bar ("183.4 of 412.0 MB", then "Done"), the file, and the files and megabytes received in all. When the importer moves a game into place, a pop-up says "<title> arrived" with *Send another game* and *Go to the library* (focused; left/right choose, B closes it), and a green note with the same news stays on the page until the next upload starts, the instructions hidden meanwhile. Without Wi-Fi: "No Wi-Fi", and the status line says to connect in System Settings. B (Done) stops the server and goes back to the library, read again. Mockups `14a`, `14b`, `14c`, `14d` |
 
 The status line (left of the footer) shows the last message from the logic: red for errors, green for success. Screens with no message show a note there (controller settings: the emergency combo).
 
@@ -93,7 +96,7 @@ Every key goes through the mapping engine (`platform/input`), so a remap applies
 - `config/loader.json` holds the loader's own settings: `{"library_layout": "row", "accent": "#ff5fa8", "accent_hue": 330, "help_seen": true}`; `library_layout` is `row` or `grid`.
 - Library layout: Row by default (what the user described first). The + menu switches it; it is saved in `config/loader.json` (`{"library_layout": "row"}`, written atomically like the controller files), not in the controller files, whose parser rejects unknown keys.
 - Held directions repeat with the user's own repeat delay and interval.
-- Picture page: left/right the newer/older screenshot, L/R (rollback/roll forward) move the cover's frame by 80 px, and so does a finger on the screenshot (the frame's middle follows it), confirm opens the choice (up/down, confirm uses it), back returns to the details. A screenshot is loaded 120 ms after the focus stops on it.
+- Picture page: left/right the newer/older screenshot, L/R (rollback/roll forward) move the cover's frame by 80 px, and so does a finger on the screenshot (the frame's middle follows it), confirm writes the framed part as the game's cover, back returns to the details. A screenshot is loaded 120 ms after the focus stops on it.
 - Hold + and − for 3 s anywhere: default controls, controller settings open (unchanged).
 - Touch: the touchscreen is an LVGL pointer (`main.c`). Dragging scrolls every list and row, and on the picture page moves the cover's frame; a tap on an item focuses it and confirms it, like A (a How to play card is only focused); a tap on a footer hint does that hint's action, on the second icon of a two-button hint (← →) the second one; a tap beside the + menu or the applet notice closes it. The controller test is left by holding B, so there a tap on its hint leaves at once. `tests/ui/mockups.c` checks a tap on Launch and on the Back hint.
 
@@ -189,7 +192,40 @@ The user's choices (2026-10-22): pictures from the Album, saved as BMP, a third 
 - **Memory:** the screenshot buffer (3.7 MB) exists only while the page is open. The page's image drops it before the 150 ms fade to the next screen, and the Album service is closed when the page is left (also after the emergency combo).
 - **Afterwards:** the game's thumbnail is decoded again (`ui_art_changed`), so the library shows the new cover at once.
 
-## Phase 2 (built; hardware test pending)
+## Add games over Wi-Fi (built 2026-10-25, on a Switch in run 29)
+
+The loader's own FTP server, so games can be sent from the desktop importer without leaving the
+loader for sphaira. The importer needs no change of its own: like sphaira's server, `/` is the SD
+card, so the same `ftp://HOST:PORT` paths work with both.
+
+- **Server:** `platform/transfer/ftpd.c`, plain POSIX sockets and stdio, in a thread of its own:
+  anonymous, one client at a time, passive mode, port 5000 (the importer's default). Commands:
+  what Python's `ftplib` and the importer use (USER, PASS, TYPE, PASV/EPSV, MLSD, CWD, RETR, STOR,
+  MKD, RMD, DELE, RNFR/RNTO, ALLO) and LIST, NLST, SIZE, PWD, CDUP for ordinary FTP clients.
+- **Only `switch/renpy-loader/`:** every path is resolved (".." included) and must stay inside it,
+  so nothing else on the SD card can be read or written; anything else gets 550. A client starts
+  at `/`, as with sphaira (curl and `scripts/switch-ftp.sh` give paths from there); `/` and
+  `/switch` can be entered but list only the way down. The server runs only while the page is
+  open. A file the loader itself holds open (`logs/loader.log`) cannot be read meanwhile: the
+  Switch's file system refuses it (hardware, 2026-10-25).
+- **Lifetime:** opening the page reads the console's address (`nifm`), starts the sockets and the
+  server and keeps the console from sleeping (`appletSetAutoSleepDisabled`); leaving it (B, or
+  closing the loader from HOME) stops the server within 0.2 s, even mid-transfer, and reads the
+  library again, its covers decoded anew in the new order. A file that did not arrive whole is
+  removed.
+- **Progress:** FTP does not say how much an upload will send, so the importer announces the
+  game's size first with `ALLO <bytes>` (sphaira refuses it, which changes nothing), and the bar
+  counts from there. Moving `.uploading-<id>` into place ends it ("Done"), so re-encoded videos,
+  which come out smaller, do not leave it short. The importer window has its own progress bar.
+- **Log:** `ftp: serving on …`; for each connection that sent something `ftp: … sent N file(s),
+  X MB in Y s (Z MB/s; W MB/s while receiving)`, the second figure without listings, folders and
+  idle time; `ftp: <id> received (<title>)`; `ftp: stopped: …`. Compare with sphaira's 1-2 MB/s.
+  `FILE_BUF` and `SOCK_BUF` in `ftpd.c` are the knobs if it is slow.
+- **Tests:** `tests/unit/test_ftpd.py` (run by `scripts/test.sh`) runs the server on the Mac
+  under ASan/UBSan and drives it with the importer: export, replace (saves moved over), delete,
+  nothing outside the jail, a 5 MB file both ways, listings, stopping with a client connected.
+
+## Phase 2 (built; on a Switch since 2026-10-22)
 
 - `main.c`: keep its logic (scan, manifest table and refusals, applet warning and confirmation, per-game controls, diagnostics, self-test, emergency combo).
   - Replace the `draw_*` functions with `ui_update()`.

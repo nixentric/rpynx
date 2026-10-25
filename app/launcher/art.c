@@ -1,5 +1,5 @@
-/* Change picture (the detail page): an Album screenshot becomes a game's
- * cover (the framed part) or backdrop (all of it). The system's Album
+/* Change picture (the detail page): the framed part of an Album screenshot
+ * becomes a game's cover. The system's Album
  * service decodes the screenshots: their JPEGs are 4:4:0, which TJpgDec
  * cannot read. The loader has no JPEG encoder, so the result is a 24-bit
  * BMP next to game/ (LVGL reads it), named in manifest.json as chosen, which

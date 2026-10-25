@@ -17,7 +17,7 @@ from .tools import rmtree
 
 
 LIBRARY = "switch/renpy-loader"   # games/, saves/ and logs/ under the SD card root
-FTP_PORT = 5000                   # sphaira's FTP server
+FTP_PORT = 5000                   # the loader's FTP server, and sphaira's
 FTP_TIMEOUT = 10                  # seconds, per network operation
 FTP_BLOCK = 64 << 10
 
@@ -74,8 +74,9 @@ class Local:
 
 
 class Ftp:
-    """The Switch's SD card over FTP: sphaira's server, anonymous, ftp://HOST[:PORT], where
-    / is the SD card root. It runs only while sphaira shows it, and its address can change."""
+    """The Switch's SD card over FTP, anonymous, ftp://HOST[:PORT], where / is the SD card root:
+    the loader's own server (+ > Add games over Wi-Fi, which reaches only switch/renpy-loader/)
+    or sphaira's. Each runs only while its page shows, and the address can change."""
 
     def __init__(self, out):
         u = urllib.parse.urlsplit(out.strip())
@@ -91,7 +92,8 @@ class Ftp:
             self.ftp.login()
         except ftplib.all_errors as e:
             self.ftp.close()
-            raise Refused("cannot reach the Switch at %s:%d (%s). Turn on sphaira's FTP server and "
+            raise Refused("cannot reach the Switch at %s:%d (%s). In the loader, press + and open Add games "
+                          "over Wi-Fi (or turn on sphaira's FTP server), and "
                           "check the address it shows; it can change." % (host, port, e))
 
     def path(self, p):
@@ -141,6 +143,12 @@ class Ftp:
 
     def write(self, p, data):
         self.ftp.storbinary("STOR " + self.path(p), io.BytesIO(data))
+
+    def announce(self, size):
+        """Tells the server how many bytes an upload will send (ALLO), for the loader's progress
+        bar. Servers without one, like sphaira's, refuse it, which changes nothing."""
+        with contextlib.suppress(ftplib.Error):
+            self.ftp.voidcmd("ALLO %d" % size)
 
     def rename(self, a, b):
         self.ftp.rename(self.path(a), self.path(b))

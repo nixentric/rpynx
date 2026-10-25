@@ -3,7 +3,8 @@
  *   actions.c   input, and what each action does on each screen
  *   library.c   the game scan, manifests, the loader's settings, launching
  *   controls.c  controller settings: remapping, presets, saving
- *   art.c       change picture: an Album screenshot as a cover or backdrop
+ *   art.c       change picture: an Album screenshot as a cover
+ *   transfer.c  add games over Wi-Fi: the FTP server while its page is open
  * The screens themselves are app/ui. */
 #ifndef RSL_LAUNCHER_H
 #define RSL_LAUNCHER_H
@@ -46,6 +47,7 @@ void frame(float dt);
 
 /* library.c */
 const char *title(int i);
+void read_manifest(const char *game, struct game_info *gi);
 void load_settings(void);
 void save_settings(void);
 void scan_games(void);
@@ -62,5 +64,10 @@ void remap_action(rsl_action a);
 void open_picture(int i);
 void picture_tick(void);
 void picture_action(rsl_action a);
+
+/* transfer.c */
+void open_ftp(void);
+void ftp_tick(void);
+void close_ftp(void);
 
 #endif

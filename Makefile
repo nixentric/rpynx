@@ -71,8 +71,10 @@ PROGRAM_LIBDIRS	:=	$(PYDIST) $(RENPYDIST)
 else
 TARGET		:=	renpy-loader
 BUILD		:=	build/switch
-SOURCES		:=	app/launcher app/ui app/diagnostics platform/input platform/filesystem third_party/cjson
-INCLUDES	:=	app/launcher app/ui app/diagnostics platform/input platform/filesystem third_party/cjson \
+SOURCES		:=	app/launcher app/ui app/diagnostics platform/input platform/filesystem platform/transfer \
+			third_party/cjson
+INCLUDES	:=	app/launcher app/ui app/diagnostics platform/input platform/filesystem platform/transfer \
+			third_party/cjson \
 			third_party/lvgl build/lvgl/lvgl
 APP_TITLE	:=	rpynx
 # Homebrew Menu icon, made by scripts/icons.sh.

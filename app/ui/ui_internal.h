@@ -1,6 +1,6 @@
 /* Internal to app/ui: what its files share, grouped below by the file that
  * defines it. ui_controls.c has controller settings, controller test and
- * diagnostics; ui_pages.c how to play and the Layout page. */
+ * diagnostics; ui_pages.c how to play, the Layout page and Add games over Wi-Fi. */
 #ifndef RSL_UI_INTERNAL_H
 #define RSL_UI_INTERNAL_H
 
@@ -74,7 +74,8 @@ struct ui_screen {
     uint32_t hint_cfg[RSL_ACT_COUNT];
     lv_obj_t *items[MAX_GAMES];          /* focusable items, indexed like g.sel */
     int count, focused;
-    lv_obj_t *menu, *menu_panel, *menu_items[MENU_COUNT], *dialog, *dialog_ok;
+    lv_obj_t *menu, *menu_panel, *menu_items[MENU_COUNT], *dialog, *dialog_btn[2];
+    int dialog_n;
     int menu_focused, dialog_focused;
     bool menu_shown, dialog_shown, status_set;
     char status[sizeof g.status];
@@ -92,6 +93,11 @@ struct ui_screen {
     lv_obj_t *swatch[ACCENT_PRESETS], *knob, *hue_text, *warn;   /* layout */
     uint32_t accent_drawn;
     int hue_drawn;
+    lv_obj_t *ftp_state, *ftp_game, *ftp_bar, *ftp_progress, *ftp_file, *ftp_count;   /* add games over Wi-Fi */
+    lv_obj_t *ftp_note, *ftp_help, *arrived_title;                /* "<title> arrived"; what to do */
+    bool ftp_note_shown;
+    char ftp_id[64];                                              /* the game being received */
+    uint64_t ftp_from;                                            /* g.ftp.expect_from it belongs to */
 };
 
 /* ui.c: the screen frame, building and updating screens */
@@ -120,6 +126,7 @@ lv_obj_t *para(lv_obj_t *parent, const lv_font_t *font, uint32_t color, const ch
 lv_obj_t *shape(lv_obj_t *parent, int x, int y, int w, int h, uint32_t color, lv_opa_t opa, int radius);
 void set_text(lv_obj_t *l, const char *s);
 void set_textf(lv_obj_t *l, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+lv_obj_t *meter(lv_obj_t *parent, int w);
 lv_obj_t *pill(lv_obj_t *parent, uint32_t color, const char *text);
 void focusable(lv_obj_t *o, lv_style_t *grow);
 void focus_text(lv_obj_t *row, lv_obj_t *text);
@@ -131,6 +138,7 @@ void heading(lv_obj_t *list, const char *text, int above);
 void scrolls(lv_obj_t *o, lv_dir_t dir);
 lv_obj_t *scroller(lv_obj_t *parent, int y);
 lv_obj_t *overlay(lv_obj_t *parent);
+lv_obj_t *dialog_card(lv_obj_t *s);
 const char *glyph(const rsl_input_config *c, int b);
 int key(int a);
 lv_obj_t *button_chip(lv_obj_t *parent, const rsl_input_config *c, int b);
@@ -138,7 +146,7 @@ void hints(lv_obj_t *row, const hint *h, int n);
 void make_room(lv_obj_t *o);
 void tappable_item(lv_obj_t *o, int i);
 
-/* ui_art.c: covers and backdrops */
+/* ui_art.c: covers */
 extern lv_draw_buf_t *thumb[MAX_GAMES];           /* grid covers, NULL until decoded or without one */
 const char *title_of(int i);
 uint32_t tint(int i);
@@ -174,5 +182,7 @@ void update_diag(void);
 void build_help(lv_obj_t *s);
 void build_layout(lv_obj_t *s);
 void update_layout(void);
+void build_ftp(lv_obj_t *s);
+void update_ftp(void);
 
 #endif

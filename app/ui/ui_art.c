@@ -1,6 +1,6 @@
-/* Covers and backdrops: decoded once into buffers so that drawing them is
- * a copy (grid thumbnails, the detail page's cover, the full-screen
- * backdrop), the placeholder tiles, and the glow for games without art. */
+/* Covers: decoded once into buffers so that drawing them is a copy (the
+ * library's thumbnails, the detail page's cover), the placeholder tiles, and
+ * the glow for games without art. */
 #include "ui_internal.h"
 
 /* Kept for the whole run. */
