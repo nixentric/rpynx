@@ -230,8 +230,9 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H56.
   are drawn, or decoding off the UI thread, would cut it. Until 2026-10-23 the first cover was
   decoded on the first frame and the loader's start took 226-260 ms; it now waits a frame and
   the start is 86-94 ms (run 28, follow-up).
-- Still unverified on hardware (run 28): the touch drag of the cover frame, B from the Layout
-  page, a game without a `manifest.json`, docked mode.
+- Still unverified on hardware: the loader in docked mode. What run 28 left otherwise (the
+  touch drag of the cover frame, B from the Layout page, a game without a `manifest.json`)
+  passed on 2026-10-25 (run 29, fourth session).
 - `logs/loader.log` cannot be read over the loader's own FTP server while the loader runs: the
   Switch's file system refuses even `stat` on a file the process holds open (run 29). Read it over
   sphaira afterwards.
@@ -270,9 +271,9 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H56.
 
 ## Next engineering tasks
 
-1. One Switch session: what run 28 left (H43, H45's touch drag, H47, docked mode) and run 29
-   (the importer window, no Wi-Fi), taking the screenshots for the guide on the way; then the
-   step-by-step "how to play" guide in `docs/` from them.
+1. On a Switch: docked mode, and what run 29 left (the importer window, no Wi-Fi), taking the
+   screenshots for the guide on the way; then the step-by-step "how to play" guide in `docs/`
+   from them.
 2. Transfer: USB only if 0.7-0.8 MB/s for a game of small files (run 29) proves too slow; the
    per-file cost, not Wi-Fi, sets it.
 3. Milestone 8: release validation.
