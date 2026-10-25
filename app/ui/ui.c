@@ -228,7 +228,13 @@ void ui_update(void)
         build();
     switch (g.screen) {
     case SCR_LIBRARY:
-        load_next_thumb();
+        /* Not on the frame the screen was built on: a cover takes 110-150 ms
+         * to decode on the console, more than the rest of start-up (first
+         * frame 240 ms with it, 86-94 ms without, hardware 2026-10-23/25), and
+         * the library is meant to appear first and fill in its covers one
+         * frame at a time. */
+        if (!u.fresh)
+            load_next_thumb();
         if (u.info && u.info_sel != g.sel && g.sel >= 0 && g.sel < g.game_count)
             row_info();
         break;

@@ -130,7 +130,7 @@ are still unverified on hardware. See
 | Runtime build | success, 0 warnings, static link with no unresolved symbols |
 | Ren'Py build | `scripts/build.sh renpy`: 60 modules / 73 objects in `librenpy.a`; 169 engine modules staged; 63 SDK common scripts digest-verified |
 | `dist/renpy-runtime.nro` | 61,535,482 bytes, sha256 `88c91423e7752b3e17e174fd2713ac13ef4c2dcf6fd1e3a9f8355e93751b831b` (runtime split, rpynx titles) |
-| `dist/renpy-loader.nro` | 781,830 bytes, sha256 `57cfdaeb777f9d22c4a79b89bcca7c87ff396f46cc291b2e883eaad38fd85b6c` (LVGL loader, covers, Change picture, rpynx titles, run 28's label fixes, no Cinematic and no pictures behind the UI; run 28 itself tested `19c2f0ed…`) |
+| `dist/renpy-loader.nro` | 785,926 bytes, sha256 `e5b9b847972f93fb430981788d43ab1d3c4b989cc48c55becf9c3f19fbaed089` (LVGL loader, covers, Change picture, rpynx titles, run 28's label fixes, no Cinematic and no pictures behind the UI, covers decoded from the frame after the first; run 28 itself tested `19c2f0ed…`, its 2026-10-25 follow-up `43398231…`, the same code before a comment changed) |
 | Reproducibility | loader: identical across two clean builds. Milestone 3 runtime: identical across two full rebuilds. Not re-checked for the Ren'Py runtime |
 | libnx layout check | `_Static_assert`s in `input_switch.c` pass |
 
@@ -222,12 +222,13 @@ Checklist: [docs/HARDWARE_TESTS.md](docs/HARDWARE_TESTS.md), H1–H50.
   (`ui_pages.c`, `ui_library.c`), checked on the host with a wider font than the console's, and
   confirmed on the console on 2026-10-23 (run 28, second session). `tests/ui/mockups.c` now
   fails when a wrapping label runs past its parent.
-- The loader's first frame takes 130-132 ms, against 80 ms in the first LVGL test on 2026-10-22
-  (run 28, the same on three starts), and 226-260 ms once five folders were on the SD.
-  Measured per stage on 2026-10-23: services 24-57 ms, settings 4, library scan 29 (4 games),
-  display 3, fonts and `ui_init` 1 — the rest is the first frame itself, building the screen's
-  objects 152 ms and drawing them 14 ms. [Likely] the console's font is parsed at the first
-  text layout.
+- Covers are slow to decode: 450-453 ms for four on the console, about 113 ms each
+  (2026-10-25, two starts). They are decoded one per frame, so the frames just after the library
+  appears take that long; with four games this was not noticed in use, but a library of 20
+  would spend about 2 s at that pace. [Guessing] covers made by the importer at the size they
+  are drawn, or decoding off the UI thread, would cut it. Until 2026-10-23 the first cover was
+  decoded on the first frame and the loader's start took 226-260 ms; it now waits a frame and
+  the start is 86-94 ms (run 28, follow-up).
 - Still unverified on hardware (run 28): the touch drag of the cover frame, B from the Layout
   page, a game without a `manifest.json`, docked mode.
 - The in-game loader overlay is not built; L-stick press only shows a notice.

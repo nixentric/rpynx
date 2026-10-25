@@ -5,6 +5,7 @@
 
 /* Kept for the whole run. */
 static int covers_decoded, covers_failed;
+static uint32_t covers_ms;               /* decoding since the last log line */
 static lv_obj_t *canvas;                 /* hidden; draws covers into their buffers */
 lv_draw_buf_t *thumb[MAX_GAMES];  /* grid covers; games are scanned once at start */
 static bool thumb_tried[MAX_GAMES];
@@ -161,11 +162,13 @@ void load_next_thumb(void)
         thumb_tried[i] = true;
         if (!g.info[i].cover[0])
             continue;
+        uint32_t t0 = lv_tick_get();
         lv_draw_buf_t *b = lv_draw_buf_create(COVER_W, COVER_H, LV_COLOR_FORMAT_ARGB8888, 0);   /* round corners */
         if (b && !render_cover(b, g.info[i].cover, true)) {
             lv_draw_buf_destroy(b);
             b = NULL;
         }
+        covers_ms += lv_tick_elaps(t0);
         thumb[i] = b;
         if (b)
             covers_decoded++;
@@ -174,6 +177,13 @@ void load_next_thumb(void)
         if (b && u.covers[i])
             show_cover(u.covers[i], b);
         return;
+    }
+    /* Once every cover is tried: what the decoding costs, now that it is
+     * spread over the frames after the first. */
+    if (covers_ms) {
+        rsl_log("ui covers: %d decoded, %d failed, %u ms decoding", covers_decoded, covers_failed,
+                (unsigned)covers_ms);
+        covers_ms = 0;
     }
 }
 
